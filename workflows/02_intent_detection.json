@@ -148,7 +148,7 @@
     {
       "parameters": {
         "dataType": "string",
-        "value1": "={{ $('Validate Classification').item.json.intent }}",
+        "value1": "={{ ['CONFIRMING_ORDER','CREATING_PAYMENT'].includes($json.current_state) ? 'BUY_TICKET' : ($json.intent || $('Validate Classification').item.json.intent) }}",
         "rules": {
           "rules": [
             {

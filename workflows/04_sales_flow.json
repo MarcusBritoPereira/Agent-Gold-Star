@@ -154,23 +154,7 @@
             }
           }
         },
-        "sendQuery": true,
-        "queryParameters": {
-          "parameters": [
-            {
-              "name": "origin",
-              "value": "={{ $json.payload.origin }}"
-            },
-            {
-              "name": "destination",
-              "value": "={{ $json.payload.destination }}"
-            },
-            {
-              "name": "date",
-              "value": "={{ $json.payload.travel_date }}"
-            }
-          ]
-        }
+        "sendQuery": false
       },
       "id": "gold-star-0037",
       "name": "Check Availability",
