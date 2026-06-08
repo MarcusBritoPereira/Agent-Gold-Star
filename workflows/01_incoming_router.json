@@ -1,0 +1,488 @@
+{
+  "name": "01 - WhatsApp Incoming Router",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "whatsapp-webhook",
+        "options": {}
+      },
+      "id": "e6a2b85e-f00d-4074-b223-9588bf3a0001",
+      "name": "WhatsApp Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [
+        100,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT * FROM users WHERE phone_number = '{{ $json.body.sender.split(\"@\")[0] }}';",
+        "additionalFields": {
+          "alwaysOutputData": true
+        }
+      },
+      "id": "f58f4b5d-e596-4eb1-b1e1-1188339aa002",
+      "name": "Query User",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.1,
+      "position": [
+        300,
+        300
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "stfIva6E9dYUW12u",
+          "name": "Gold Star Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "user-exists-cond",
+              "leftValue": "={{ $json.id }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "exists",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "id": "c33f2b45-12e4-4d89-bf88-123445fa0003",
+      "name": "User Exists?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        500,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO users (phone_number, full_name) VALUES ('{{ $('WhatsApp Webhook Trigger').item.json.body.sender.split(\"@\")[0] }}', '{{ $('WhatsApp Webhook Trigger').item.json.body.data.pushName }}') RETURNING *;"
+      },
+      "id": "e44d34bc-a89e-49ff-88ee-123456bb0004",
+      "name": "Create User",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.1,
+      "position": [
+        700,
+        200
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "stfIva6E9dYUW12u",
+          "name": "Gold Star Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT * FROM conversational_sessions WHERE user_id = '{{ $json.id }}' AND expires_at > NOW() ORDER BY created_at DESC LIMIT 1;",
+        "additionalFields": {
+          "alwaysOutputData": true
+        }
+      },
+      "id": "a11d2345-bbde-4efd-ac11-223344cc0005",
+      "name": "Get Session",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.1,
+      "position": [
+        950,
+        300
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "stfIva6E9dYUW12u",
+          "name": "Gold Star Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "session-exists-cond",
+              "leftValue": "={{ $json.id }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "exists",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "id": "b11a23cd-44de-4dfb-bbcc-77aa88dd0006",
+      "name": "Session Active?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1150,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO conversational_sessions (user_id, current_state, expires_at) VALUES ('{{ $('Create User').item.json.id || $('Query User').item.json.id }}', 'START', NOW() + INTERVAL '30 minutes') RETURNING *;"
+      },
+      "id": "c11a23cd-44de-4dfb-bbcc-77aa88dd0007",
+      "name": "Create Session",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.1,
+      "position": [
+        1350,
+        200
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "stfIva6E9dYUW12u",
+          "name": "Gold Star Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "dataType": "string",
+        "value1": "={{ $json.current_state }}",
+        "rules": {
+          "rules": [
+            {
+              "value2": "HUMAN_FALLBACK"
+            },
+            {
+              "value2": "EXPECTING_PAYMENT"
+            }
+          ]
+        },
+        "fallbackOutput": 2
+      },
+      "id": "d11b34ef-55de-4dfb-bbcc-77aa88dd0008",
+      "name": "Route by State",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 1,
+      "position": [
+        1600,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "dataType": "string",
+        "value1": "={{ $('WhatsApp Webhook Trigger').item.json.body.data.messageType }}",
+        "rules": {
+          "rules": [
+            {
+              "value2": "conversation"
+            },
+            {
+              "value2": "extendedTextMessage"
+            },
+            {
+              "value2": "audioMessage"
+            },
+            {
+              "value2": "imageMessage"
+            },
+            {
+              "value2": "videoMessage"
+            }
+          ]
+        },
+        "fallbackOutput": 5
+      },
+      "id": "route-msg-type-001",
+      "name": "Route Message Type",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 1,
+      "position": [
+        1850,
+        450
+      ]
+    },
+    {
+      "parameters": {
+        "source": "database",
+        "workflowId": "GGhcJ0d6k2M1rMpU",
+        "options": {
+          "waitForSubWorkflow": true
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "message": "={{ $('WhatsApp Webhook Trigger').item.json.body.data.message.conversation || $('WhatsApp Webhook Trigger').item.json.body.data.message.extendedTextMessage?.text }}",
+            "session_id": "={{ $json.id }}"
+          }
+        }
+      },
+      "id": "e11c45fg-66de-4dfb-bbcc-77aa88dd0009",
+      "name": "Call AI Intent Classifier",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.1,
+      "position": [
+        2100,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://host.docker.internal:8088/message/sendText/goldstar",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "gold_star_api_key_123"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "jsonBody": "={\n  \"number\": \"{{ $('WhatsApp Webhook Trigger').item.json.body.sender.split(\\\"@\\\")[0] }}\",\n  \"text\": \"Recebi seu áudio! Para que eu possa te ajudar melhor no momento, por favor envie sua mensagem digitada por texto.\"\n}",
+        "options": {}
+      },
+      "id": "reply-audio-001",
+      "name": "Reply Audio Message",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        2100,
+        500
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://host.docker.internal:8088/message/sendText/goldstar",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "gold_star_api_key_123"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "jsonBody": "={\n  \"number\": \"{{ $('WhatsApp Webhook Trigger').item.json.body.sender.split(\\\"@\\\")[0] }}\",\n  \"text\": \"Recebi sua imagem/vídeo! No momento, só consigo processar mensagens de texto para buscar rotas, consultar horários e vender passagens. Como posso te ajudar por texto?\"\n}",
+        "options": {}
+      },
+      "id": "reply-media-001",
+      "name": "Reply Media Message",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        2100,
+        650
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://host.docker.internal:8088/message/sendText/goldstar",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "gold_star_api_key_123"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "jsonBody": "={\n  \"number\": \"{{ $('WhatsApp Webhook Trigger').item.json.body.sender.split(\\\"@\\\")[0] }}\",\n  \"text\": \"Olá! Recebi sua mensagem, mas no momento só consigo processar mensagens de texto. Como posso te ajudar?\"\n}",
+        "options": {}
+      },
+      "id": "reply-fallback-001",
+      "name": "Reply Fallback Message",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        2100,
+        800
+      ]
+    }
+  ],
+  "connections": {
+    "WhatsApp Webhook Trigger": {
+      "main": [
+        [
+          {
+            "node": "Query User",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Query User": {
+      "main": [
+        [
+          {
+            "node": "User Exists?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "User Exists?": {
+      "main": [
+        [
+          {
+            "node": "Get Session",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Create User",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create User": {
+      "main": [
+        [
+          {
+            "node": "Get Session",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Session": {
+      "main": [
+        [
+          {
+            "node": "Session Active?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Session Active?": {
+      "main": [
+        [
+          {
+            "node": "Route by State",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Create Session",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Session": {
+      "main": [
+        [
+          {
+            "node": "Route by State",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route by State": {
+      "main": [
+        [],
+        [],
+        [
+          {
+            "node": "Route Message Type",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route Message Type": {
+      "main": [
+        [
+          {
+            "node": "Call AI Intent Classifier",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Call AI Intent Classifier",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Reply Audio Message",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Reply Media Message",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Reply Media Message",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Reply Fallback Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {},
+  "active": false
+}

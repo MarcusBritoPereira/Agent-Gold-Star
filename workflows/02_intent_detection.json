@@ -1,0 +1,222 @@
+{
+  "name": "02 - IA Intent Detection",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "a6a2b85e-f00d-4074-b223-9588bf3a0021",
+      "name": "Execute Trigger",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1,
+      "position": [
+        100,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/chat/completions",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "model",
+              "value": "gpt-4o-mini"
+            },
+            {
+              "name": "response_format",
+              "value": "={ \"type\": \"json_object\" }"
+            },
+            {
+              "name": "messages",
+              "value": "=[\n  {\n    \"role\": \"system\",\n    \"content\": \"You are a classifer for Gold Star Hydrovia ticketing. Classify user intent into: BUY_TICKET, ASK_SCHEDULES, ASK_PRICES, HUMAN_HELP, OTHER. Also extract entities (origin, destination, travel_date, seat_number, passenger_name, passenger_cpf) from the message. Output JSON only.\"\n  },\n  {\n    \"role\": \"user\",\n    \"content\": \"{{ $json.message }}\"\n  }\n]"
+            }
+          ]
+        }
+      },
+      "id": "f58f4b5d-e596-4eb1-b1e1-1188339aa022",
+      "name": "OpenAI Intent Classifier",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        300,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const response = JSON.parse($input.first().json.choices[0].message.content);\nreturn [{ json: response }];"
+      },
+      "id": "c33f2b45-12e4-4d89-bf88-123445fa0023",
+      "name": "Parse Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        550,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE conversational_sessions SET current_state = '{{ $json.intent }}', state_payload = state_payload || '{{ JSON.stringify($json.extracted_entities) }}'::jsonb WHERE id = '{{ $('Execute Trigger').item.json.session_id }}';"
+      },
+      "id": "e44d34bc-a89e-49ff-88ee-123456bb0024",
+      "name": "Update State payload",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.1,
+      "position": [
+        750,
+        300
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "stfIva6E9dYUW12u",
+          "name": "Gold Star Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "dataType": "string",
+        "value1": "={{ $('Parse Response').item.json.intent }}",
+        "rules": {
+          "rules": [
+            {
+              "value2": "BUY_TICKET"
+            },
+            {
+              "value2": "ASK_SCHEDULES"
+            },
+            {
+              "value2": "HUMAN_HELP"
+            }
+          ]
+        },
+        "fallbackOutput": 2
+      },
+      "id": "d11b34ef-55de-4dfb-bbcc-77aa88dd0025",
+      "name": "Route by Intent",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 1,
+      "position": [
+        1000,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://localhost:5678/api/v1/workflows/execute-sales",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "session_id",
+              "value": "={{ $('Execute Trigger').item.json.session_id }}"
+            }
+          ]
+        }
+      },
+      "id": "e11c45fg-66de-4dfb-bbcc-77aa88dd0026",
+      "name": "Trigger Sales Flow",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        1250,
+        150
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://localhost:5678/api/v1/workflows/execute-queries",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "session_id",
+              "value": "={{ $('Execute Trigger').item.json.session_id }}"
+            }
+          ]
+        }
+      },
+      "id": "e11c45fg-66de-4dfb-bbcc-77aa88dd0027",
+      "name": "Trigger Query Flow",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        1250,
+        300
+      ]
+    }
+  ],
+  "connections": {
+    "Execute Trigger": {
+      "main": [
+        [
+          {
+            "node": "OpenAI Intent Classifier",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Intent Classifier": {
+      "main": [
+        [
+          {
+            "node": "Parse Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Response": {
+      "main": [
+        [
+          {
+            "node": "Update State payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update State payload": {
+      "main": [
+        [
+          {
+            "node": "Route by Intent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route by Intent": {
+      "main": [
+        [
+          {
+            "node": "Trigger Sales Flow",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Trigger Query Flow",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {},
+  "active": false
+}

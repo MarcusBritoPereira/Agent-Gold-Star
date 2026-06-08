@@ -1,0 +1,48 @@
+{
+  "name": "08 - Monitoramento",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "a6a2b85e-f00d-4074-b223-9588bf3a0081",
+      "name": "Error Trigger",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [100, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://hooks.slack.com/services/YOUR/SLACK/WEBHOOK",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "text",
+              "value": "=🚨 *Falha na Automação Gold Star*\\n\\nWorkflow: {{ $json.execution.error.workflow.name }}\\nNó com erro: {{ $json.execution.error.node.name }}\\nMensagem: {{ $json.execution.error.message }}\\nID Execução: {{ $json.execution.id }}"
+            }
+          ]
+        }
+      },
+      "id": "f58f4b5d-e596-4eb1-b1e1-1188339aa082",
+      "name": "Send Slack Alert",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [350, 300]
+    }
+  ],
+  "connections": {
+    "Error Trigger": {
+      "main": [
+        [
+          {
+            "node": "Send Slack Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {},
+  "active": false
+}

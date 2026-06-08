@@ -1,0 +1,141 @@
+{
+  "name": "03 - Consulta Operacional",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "a6a2b85e-f00d-4074-b223-9588bf3a0031",
+      "name": "Execute Trigger",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1,
+      "position": [
+        100,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT state_payload FROM conversational_sessions WHERE id = '{{ $json.session_id }}';"
+      },
+      "id": "f58f4b5d-e596-4eb1-b1e1-1188339aa032",
+      "name": "Get Session State",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.1,
+      "position": [
+        300,
+        300
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "stfIva6E9dYUW12u",
+          "name": "Gold Star Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://embarcar-e83ea296df06.herokuapp.com/api/routes/show?q[origin_cont]={{ $json.state_payload.origin }}",
+        "authentication": "none"
+      },
+      "id": "c33f2b45-12e4-4d89-bf88-123445fa0033",
+      "name": "Query Heroku Show API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        550,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const routes = $input.first().json.routes || [];\nlet text = \"🚢 *Lanchas Gold Star - Rotas e Horários Disponíveis*:\\n\\n\";\nfor (const r of routes) {\n  text += `📍 Rota ID: ${r.id}\\n⛵ ${r.origin} ➔ ${r.destination}\\n📅 ${r.week_day} às ${r.hour}\\n💰 Preço: R$ ${r.speed_boat_price}\\n⏱ Duração: ${r.duration}\\n⚓ Local: ${r.departure_from}\\n📝 Paradas: ${r.stopover || 'Direto'}\\n\\n`;\n}\nif (routes.length === 0) {\n  text = \"Desculpe, não encontrei nenhuma rota de saída para a origem informada no momento.\";\n}\nreturn [{ json: { formatted_text: text } }];"
+      },
+      "id": "e44d34bc-a89e-49ff-88ee-123456bb0034",
+      "name": "Format Schedules Text",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        780,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://localhost:8088/message/sendText/goldstar",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "number",
+              "value": "={{ $('Execute Trigger').item.json.phone_number }}"
+            },
+            {
+              "name": "text",
+              "value": "={{ $json.formatted_text }}"
+            }
+          ]
+        }
+      },
+      "id": "e11c45fg-66de-4dfb-bbcc-77aa88dd0035",
+      "name": "Send WhatsApp Message",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        1000,
+        300
+      ]
+    }
+  ],
+  "connections": {
+    "Execute Trigger": {
+      "main": [
+        [
+          {
+            "node": "Get Session State",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Session State": {
+      "main": [
+        [
+          {
+            "node": "Query Heroku Show API",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Query Heroku Show API": {
+      "main": [
+        [
+          {
+            "node": "Format Schedules Text",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Schedules Text": {
+      "main": [
+        [
+          {
+            "node": "Send WhatsApp Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {},
+  "active": false
+}

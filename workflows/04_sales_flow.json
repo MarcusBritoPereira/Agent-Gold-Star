@@ -1,0 +1,216 @@
+{
+  "name": "04 - Fluxo de Venda",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "a6a2b85e-f00d-4074-b223-9588bf3a0041",
+      "name": "Execute Trigger",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1,
+      "position": [100, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT state_payload FROM conversational_sessions WHERE id = '{{ $json.session_id }}';"
+      },
+      "id": "f58f4b5d-e596-4eb1-b1e1-1188339aa042",
+      "name": "Get Session Payload",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.1,
+      "position": [300, 300],
+      "credentials": {
+        "postgres": {
+          "id": "stfIva6E9dYUW12u",
+          "name": "Gold Star Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const payload = $input.first().json.state_payload || {};\nconst missing = [];\n\nif (!payload.origin) missing.push('Origem');\nif (!payload.destination) missing.push('Destino');\nif (!payload.travel_date) missing.push('Data da Viagem');\nif (!payload.passenger_name) missing.push('Nome Completo');\nif (!payload.passenger_cpf) missing.push('CPF');\nif (!payload.passenger_phone) missing.push('Telefone');\nif (!payload.passenger_birthday) missing.push('Data de Nascimento');\nif (!payload.route_id) missing.push('Rota (route_id)');\nif (!payload.trip_id) missing.push('Viagem (trip_id)');\n\nreturn [{ json: { payload, missing, complete: missing.length === 0, session_id: $('Execute Trigger').item.json.session_id, phone_number: $('Execute Trigger').item.json.phone_number } }];"
+      },
+      "id": "c33f2b45-12e4-4d89-bf88-123445fa0043",
+      "name": "Evaluate Completeness",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [500, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.complete }}",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "id": "e44d34bc-a89e-49ff-88ee-123456bb0044",
+      "name": "Is Complete?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [700, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://graph.facebook.com/v18.0/YOUR_PHONE_NUMBER_ID/messages",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "messaging_product",
+              "value": "whatsapp"
+            },
+            {
+              "name": "to",
+              "value": "={{ $json.phone_number }}"
+            },
+            {
+              "name": "text",
+              "value": "={ \"body\": \"Para continuar a compra, preciso de mais informações:\\n\\n➡️ {{ $json.missing.join('\\n➡️ ') }}\\n\\nPor favor, envie os dados solicitados.\" }"
+            }
+          ]
+        }
+      },
+      "id": "d11b34ef-55de-4dfb-bbcc-77aa88dd0045",
+      "name": "Request Missing Data",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [950, 150]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://embarcar-e83ea296df06.herokuapp.com/api/routes/available_seats?web=false&route_id={{ $json.payload.route_id }}&date={{ $json.payload.travel_date }}",
+        "options": {}
+      },
+      "id": "e11c45fg-66de-4dfb-bbcc-77aa88dd0046",
+      "name": "Check Available Seats (Heroku)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [950, 450]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "number": [
+            {
+              "value1": "={{ $json.available_seats }}",
+              "operation": "larger",
+              "value2": 0
+            }
+          ]
+        }
+      },
+      "id": "b22c45aa-77de-4dfc-ccdd-88bb99ee0047",
+      "name": "Seats Available?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [1180, 450]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://graph.facebook.com/v18.0/YOUR_PHONE_NUMBER_ID/messages",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "messaging_product",
+              "value": "whatsapp"
+            },
+            {
+              "name": "to",
+              "value": "={{ $('Execute Trigger').item.json.phone_number }}"
+            },
+            {
+              "name": "text",
+              "value": "={ \"body\": \"😔 Infelizmente não há assentos disponíveis para a data selecionada.\\n\\nGostaria de escolher outra data ou destino?\" }"
+            }
+          ]
+        }
+      },
+      "id": "f33d56bb-88ef-5efd-ddee-99cc00ff0048",
+      "name": "Notify No Seats",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1420, 600]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE conversational_sessions SET current_state = 'EXPECTING_PAYMENT', state_payload = state_payload || '{\"trip_id\": \"{{ $('Check Available Seats (Heroku)').item.json.trip.id }}\"}' WHERE id = '{{ $('Execute Trigger').item.json.session_id }}';"
+      },
+      "id": "g44e67cc-99fg-6fge-eeef-00dd11gg0049",
+      "name": "Update Session to Payment",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.1,
+      "position": [1420, 300],
+      "credentials": {
+        "postgres": {
+          "id": "stfIva6E9dYUW12u",
+          "name": "Gold Star Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "mvY9FbuCuMumy11K",
+          "mode": "id"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "session_id": "={{ $('Execute Trigger').item.json.session_id }}",
+            "phone_number": "={{ $('Execute Trigger').item.json.phone_number }}"
+          }
+        }
+      },
+      "id": "h55f78dd-00gh-7ghf-fff0-11ee22hh0050",
+      "name": "Trigger Payment Flow (WF05)",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1,
+      "position": [1650, 300]
+    }
+  ],
+  "connections": {
+    "Execute Trigger": {
+      "main": [[{ "node": "Get Session Payload", "type": "main", "index": 0 }]]
+    },
+    "Get Session Payload": {
+      "main": [[{ "node": "Evaluate Completeness", "type": "main", "index": 0 }]]
+    },
+    "Evaluate Completeness": {
+      "main": [[{ "node": "Is Complete?", "type": "main", "index": 0 }]]
+    },
+    "Is Complete?": {
+      "main": [
+        [{ "node": "Check Available Seats (Heroku)", "type": "main", "index": 0 }],
+        [{ "node": "Request Missing Data", "type": "main", "index": 0 }]
+      ]
+    },
+    "Check Available Seats (Heroku)": {
+      "main": [[{ "node": "Seats Available?", "type": "main", "index": 0 }]]
+    },
+    "Seats Available?": {
+      "main": [
+        [{ "node": "Update Session to Payment", "type": "main", "index": 0 }],
+        [{ "node": "Notify No Seats", "type": "main", "index": 0 }]
+      ]
+    },
+    "Update Session to Payment": {
+      "main": [[{ "node": "Trigger Payment Flow (WF05)", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": {},
+  "active": false
+}

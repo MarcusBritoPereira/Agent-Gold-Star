@@ -1,0 +1,175 @@
+{
+  "name": "06 - Webhook Asaas",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "asaas-payment",
+        "options": {}
+      },
+      "id": "a6a2b85e-f00d-4074-b223-9588bf3a0061",
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [100, 300]
+    },
+    {
+      "parameters": {
+        "dataType": "string",
+        "value1": "={{ $json.body.event }}",
+        "rules": {
+          "rules": [
+            { "value2": "PAYMENT_RECEIVED" },
+            { "value2": "PAYMENT_OVERDUE" }
+          ]
+        },
+        "fallbackOutput": 2
+      },
+      "id": "f58f4b5d-e596-4eb1-b1e1-1188339aa062",
+      "name": "Route Payment Status",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 1,
+      "position": [320, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extract order_id from the Asaas webhook payload\n// Asaas sends payment info; we need to match it to an order\n// The externalReference or description contains the Heroku order_id\nconst payment = $input.first().json.body.payment || {};\nconst orderId = payment.externalReference || payment.description?.match(/\\d+/)?.[0] || null;\n\nreturn [{\n  json: {\n    order_id: orderId,\n    payment_gateway_id: payment.id,\n    payment_value: payment.value,\n    net_value: payment.netValue,\n    payment_date: payment.paymentDate || payment.confirmedDate\n  }\n}];"
+      },
+      "id": "extract-order-paid-001",
+      "name": "Extract Order ID from Webhook",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [550, 200]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT s.id as session_id, s.state_payload, u.phone_number, u.full_name FROM conversational_sessions s INNER JOIN users u ON s.user_id = u.id WHERE s.state_payload->>'order_id' = '{{ $json.order_id }}' LIMIT 1;"
+      },
+      "id": "get-session-by-order-001",
+      "name": "Find Session by Order ID",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.1,
+      "position": [780, 200],
+      "credentials": {
+        "postgres": {
+          "id": "stfIva6E9dYUW12u",
+          "name": "Gold Star Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE conversational_sessions SET current_state = 'PAID', updated_at = NOW() WHERE id = '{{ $json.session_id }}';"
+      },
+      "id": "c33f2b45-12e4-4d89-bf88-123445fa0063",
+      "name": "Update Session to PAID",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.1,
+      "position": [1010, 200],
+      "credentials": {
+        "postgres": {
+          "id": "stfIva6E9dYUW12u",
+          "name": "Gold Star Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "Vn1Ak5aWMxiJy1kP",
+          "mode": "id"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "order_id": "={{ $('Extract Order ID from Webhook').item.json.order_id }}",
+            "session_id": "={{ $json.session_id }}",
+            "phone_number": "={{ $json.phone_number }}",
+            "full_name": "={{ $json.full_name }}",
+            "state_payload": "={{ $json.state_payload }}"
+          }
+        }
+      },
+      "id": "e44d34bc-a89e-49ff-88ee-123456bb0064",
+      "name": "Trigger Ticket Delivery (WF07)",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1,
+      "position": [1240, 200]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE conversational_sessions SET current_state = 'PAYMENT_EXPIRED', updated_at = NOW() WHERE state_payload->>'order_id' = '{{ $('Route Payment Status').item.json.body.payment.externalReference }}';"
+      },
+      "id": "d11b34ef-55de-4dfb-bbcc-77aa88dd0065",
+      "name": "Update Session to EXPIRED",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.1,
+      "position": [550, 450],
+      "credentials": {
+        "postgres": {
+          "id": "stfIva6E9dYUW12u",
+          "name": "Gold Star Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://graph.facebook.com/v18.0/YOUR_PHONE_NUMBER_ID/messages",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "messaging_product",
+              "value": "whatsapp"
+            },
+            {
+              "name": "to",
+              "value": "={{ $('Find Session by Order ID').item.json.phone_number }}"
+            },
+            {
+              "name": "text",
+              "value": "={ \"body\": \"⏰ Seu pagamento venceu e a reserva foi cancelada.\\n\\nSe ainda quiser viajar, inicie uma nova busca respondendo a esta mensagem.\" }"
+            }
+          ]
+        }
+      },
+      "id": "notify-expired-001",
+      "name": "Notify Payment Expired",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [780, 450]
+    }
+  ],
+  "connections": {
+    "Webhook Trigger": {
+      "main": [[{ "node": "Route Payment Status", "type": "main", "index": 0 }]]
+    },
+    "Route Payment Status": {
+      "main": [
+        [{ "node": "Extract Order ID from Webhook", "type": "main", "index": 0 }],
+        [{ "node": "Update Session to EXPIRED", "type": "main", "index": 0 }]
+      ]
+    },
+    "Extract Order ID from Webhook": {
+      "main": [[{ "node": "Find Session by Order ID", "type": "main", "index": 0 }]]
+    },
+    "Find Session by Order ID": {
+      "main": [[{ "node": "Update Session to PAID", "type": "main", "index": 0 }]]
+    },
+    "Update Session to PAID": {
+      "main": [[{ "node": "Trigger Ticket Delivery (WF07)", "type": "main", "index": 0 }]]
+    },
+    "Update Session to EXPIRED": {
+      "main": [[{ "node": "Notify Payment Expired", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": {},
+  "active": false
+}
