@@ -110,7 +110,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "={{ $env.EVOLUTION_API_URL + '/message/sendText/' + $env.EVOLUTION_INSTANCE }}",
+        "url": "http://host.docker.internal:8088/message/sendText/goldstar",
         "options": {
           "timeout": 15000,
           "response": {
@@ -124,7 +124,7 @@
           "parameters": [
             {
               "name": "apikey",
-              "value": "={{ $env.EVOLUTION_API_KEY }}"
+              "value": "gold_star_api_key_123"
             }
           ]
         },
@@ -261,7 +261,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "={{ $env.EVOLUTION_API_URL + '/message/sendText/' + $env.EVOLUTION_INSTANCE }}",
+        "url": "http://host.docker.internal:8088/message/sendText/goldstar",
         "options": {
           "timeout": 15000,
           "response": {
@@ -275,7 +275,7 @@
           "parameters": [
             {
               "name": "apikey",
-              "value": "={{ $env.EVOLUTION_API_KEY }}"
+              "value": "gold_star_api_key_123"
             }
           ]
         },
