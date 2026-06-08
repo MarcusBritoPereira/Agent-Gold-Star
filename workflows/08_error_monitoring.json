@@ -3,39 +3,72 @@
   "nodes": [
     {
       "parameters": {},
-      "id": "a6a2b85e-f00d-4074-b223-9588bf3a0081",
-      "name": "Error Trigger",
+      "id": "gold-star-0076",
+      "name": "Workflow Error Trigger",
       "type": "n8n-nodes-base.errorTrigger",
       "typeVersion": 1,
-      "position": [100, 300]
+      "position": [
+        0,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const execution=$json.execution??{}; const error=execution.error??{}; return [{json:{text:'🚨 Falha na Automação Gold Star\\nWorkflow: '+(error.workflow?.name??'desconhecido')+'\\nNó: '+(error.node?.name??'desconhecido')+'\\nErro: '+String(error.message??'erro desconhecido').slice(0,500)+'\\nExecução: '+(execution.id??'n/a')}}];"
+      },
+      "id": "gold-star-0077",
+      "name": "Build Redacted Alert",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        240,
+        300
+      ]
     },
     {
       "parameters": {
         "method": "POST",
-        "url": "https://hooks.slack.com/services/YOUR/SLACK/WEBHOOK",
-        "sendBody": true,
-        "bodyParameters": {
-          "parameters": [
-            {
-              "name": "text",
-              "value": "=🚨 *Falha na Automação Gold Star*\\n\\nWorkflow: {{ $json.execution.error.workflow.name }}\\nNó com erro: {{ $json.execution.error.node.name }}\\nMensagem: {{ $json.execution.error.message }}\\nID Execução: {{ $json.execution.id }}"
+        "url": "={{ $env.ALERT_WEBHOOK_URL }}",
+        "options": {
+          "timeout": 15000,
+          "response": {
+            "response": {
+              "neverError": false
             }
-          ]
-        }
+          }
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ JSON.stringify({ text: $json.text }) }}"
       },
-      "id": "f58f4b5d-e596-4eb1-b1e1-1188339aa082",
-      "name": "Send Slack Alert",
+      "id": "gold-star-0078",
+      "name": "Send Alert",
       "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.1,
-      "position": [350, 300]
+      "typeVersion": 4.2,
+      "position": [
+        480,
+        300
+      ]
     }
   ],
   "connections": {
-    "Error Trigger": {
+    "Workflow Error Trigger": {
       "main": [
         [
           {
-            "node": "Send Slack Alert",
+            "node": "Build Redacted Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Redacted Alert": {
+      "main": [
+        [
+          {
+            "node": "Send Alert",
             "type": "main",
             "index": 0
           }
@@ -43,6 +76,16 @@
       ]
     }
   },
-  "settings": {},
-  "active": false
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "none",
+    "saveManualExecutions": false
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 0,
+  "active": false,
+  "versionId": "gold-star-0079"
 }

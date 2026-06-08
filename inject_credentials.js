@@ -1,42 +1,20 @@
-const fs = require('fs');
-const path = require('path');
+const fs = require('node:fs');
+const path = require('node:path');
+const { loadEnv, required } = require('./scripts/lib/config');
 
-const CREDENTIAL_ID = 'stfIva6E9dYUW12u';
-const CREDENTIAL_NAME = 'Gold Star Postgres';
-
-function injectCredentials() {
-  const dir = path.join(__dirname, 'workflows');
-  if (!fs.existsSync(dir)) {
-    console.error('Workflows directory not found.');
-    process.exit(1);
+loadEnv();
+const credentialId = required('N8N_POSTGRES_CREDENTIAL_ID');
+const credentialName = process.env.N8N_POSTGRES_CREDENTIAL_NAME || 'Gold Star Postgres';
+const directory = path.join(__dirname, 'workflows');
+for (const file of fs.readdirSync(directory).filter((name) => name.endsWith('.json'))) {
+  const filePath = path.join(directory, file);
+  const workflow = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+  let changed = false;
+  for (const workflowNode of workflow.nodes || []) {
+    if (!workflowNode.credentials?.postgres) continue;
+    workflowNode.credentials.postgres = { id: credentialId, name: credentialName };
+    changed = true;
   }
-
-  const files = fs.readdirSync(dir).filter(f => f.endsWith('.json'));
-
-  for (const file of files) {
-    const filePath = path.join(dir, file);
-    const content = JSON.parse(fs.readFileSync(filePath, 'utf8'));
-    let modified = false;
-
-    if (content.nodes && Array.isArray(content.nodes)) {
-      for (const node of content.nodes) {
-        if (node.type === 'n8n-nodes-base.postgres') {
-          node.credentials = {
-            postgres: {
-              id: CREDENTIAL_ID,
-              name: CREDENTIAL_NAME
-            }
-          };
-          modified = true;
-        }
-      }
-    }
-
-    if (modified) {
-      fs.writeFileSync(filePath, JSON.stringify(content, null, 2), 'utf8');
-      console.log(`Injected Postgres credentials into ${file}`);
-    }
-  }
+  if (changed) fs.writeFileSync(filePath, `${JSON.stringify(workflow, null, 2)}\n`);
 }
-
-injectCredentials();
+console.log('PostgreSQL credential references injected');

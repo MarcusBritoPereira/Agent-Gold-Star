@@ -2,146 +2,233 @@
   "name": "05 - Pagamento Asaas",
   "nodes": [
     {
-      "parameters": {},
-      "id": "a6a2b85e-f00d-4074-b223-9588bf3a0051",
-      "name": "Execute Trigger",
-      "type": "n8n-nodes-base.executeWorkflowTrigger",
-      "typeVersion": 1,
-      "position": [100, 300]
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "create-payment",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "id": "gold-star-0045",
+      "name": "Payment Creation Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        300
+      ]
     },
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "SELECT u.full_name, u.cpf, u.phone_number, s.state_payload FROM conversational_sessions s INNER JOIN users u ON s.user_id = u.id WHERE s.id = '{{ $json.session_id }}';"
+        "query": "SELECT s.*, u.phone_number, u.full_name, u.cpf FROM conversational_sessions s JOIN users u ON u.id=s.user_id WHERE s.id=$1;",
+        "options": {
+          "queryReplacement": "={{ [$json.body.session_id] }}"
+        }
       },
-      "id": "f58f4b5d-e596-4eb1-b1e1-1188339aa052",
-      "name": "Get Checkout Details",
+      "id": "gold-star-0046",
+      "name": "Get Checkout Context",
       "type": "n8n-nodes-base.postgres",
-      "typeVersion": 2.1,
-      "position": [300, 300],
+      "typeVersion": 2.5,
+      "position": [
+        230,
+        300
+      ],
       "credentials": {
         "postgres": {
-          "id": "stfIva6E9dYUW12u",
-          "name": "Gold Star Postgres"
+          "id": "__POSTGRES_CREDENTIAL_ID__",
+          "name": "__POSTGRES_CREDENTIAL_NAME__"
         }
       }
     },
     {
       "parameters": {
-        "jsCode": "const session = $input.first().json;\nconst payload = session.state_payload || {};\n\n// Build the order creation payload for Heroku API\nconst orderPayload = {\n  route_id: payload.route_id,\n  trip_id: payload.trip_id,\n  payment_method: 'PIX',\n  search_trip: 'one_way',\n  name: payload.passenger_name || session.full_name,\n  phone: payload.passenger_phone || session.phone_number,\n  date: payload.travel_date,\n  return_date: null,\n  documents: { '1': payload.passenger_cpf || session.cpf },\n  customers: { '1': payload.passenger_name || session.full_name },\n  birthdays: { '1': payload.passenger_birthday || '1990-01-01' },\n  phones: { '1': payload.passenger_phone || session.phone_number },\n  document_types: { '1': 'CPF' },\n  data: JSON.stringify([{ speed_boat_price: 1 }, { hammock_price: 0 }, { suite_price1: 0 }, { suite_price2: 0 }])\n};\n\nreturn [{\n  json: {\n    orderPayload,\n    phone_number: payload.passenger_phone || session.phone_number,\n    passenger_name: payload.passenger_name || session.full_name,\n    session_id: $('Execute Trigger').item.json.session_id\n  }\n}];"
+        "jsCode": "const p=$json.state_payload; return [{json:{session_id:$json.id,phone_number:$json.phone_number,order:{trip_id:p.trip_id,seat_number:p.available_seat,travel_date:p.travel_date,origin:p.origin,destination:p.destination,price_cents:p.price_cents,customer:{name:p.passenger_name||$json.full_name,cpf:p.passenger_cpf||$json.cpf,phone:$json.phone_number},external_reference:$json.id}}}];"
       },
-      "id": "prep-payload-001",
-      "name": "Prepare Order Payload",
+      "id": "gold-star-0047",
+      "name": "Build Order Payload",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [500, 300]
+      "position": [
+        460,
+        300
+      ]
     },
     {
       "parameters": {
         "method": "POST",
-        "url": "https://embarcar-e83ea296df06.herokuapp.com/api/orders/create?format=json",
+        "url": "={{ $env.BACKEND_BASE_URL + '/api/orders/create' }}",
+        "options": {
+          "timeout": 15000,
+          "response": {
+            "response": {
+              "neverError": false
+            }
+          }
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ JSON.stringify($json.order) }}"
+      },
+      "id": "gold-star-0048",
+      "name": "Create Order",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        690,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const source=$json; const request=$('Build Order Payload').item.json; const orderId=source.id??source.order_id; const paymentLink=source.payment_link??source.payment_url; if(!orderId||!paymentLink) throw new Error('Backend não retornou order_id e payment_link'); return [{json:{...request,order_id:String(orderId),payment_link:String(paymentLink)}}];"
+      },
+      "id": "gold-star-0049",
+      "name": "Validate Order Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        920,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE conversational_sessions SET current_state='EXPECTING_PAYMENT', state_payload=state_payload || $2::jsonb WHERE id=$1 RETURNING *;",
+        "options": {
+          "queryReplacement": "={{ [$json.session_id, JSON.stringify({ order_id: $json.order_id, payment_link: $json.payment_link })] }}"
+        }
+      },
+      "id": "gold-star-0050",
+      "name": "Save Order",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        1140,
+        300
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "__POSTGRES_CREDENTIAL_ID__",
+          "name": "__POSTGRES_CREDENTIAL_NAME__"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.EVOLUTION_API_URL + '/message/sendText/' + $env.EVOLUTION_INSTANCE }}",
+        "options": {
+          "timeout": 15000,
+          "response": {
+            "response": {
+              "neverError": false
+            }
+          }
+        },
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
             {
-              "name": "Accept",
-              "value": "application/json"
-            },
-            {
-              "name": "Content-Type",
-              "value": "application/json"
+              "name": "apikey",
+              "value": "={{ $env.EVOLUTION_API_KEY }}"
             }
           ]
         },
         "sendBody": true,
-        "contentType": "json",
-        "jsonBody": "={{ JSON.stringify($json.orderPayload) }}",
-        "options": {}
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ JSON.stringify({ number: $('Validate Order Response').item.json.phone_number, text: 'Pedido criado com sucesso. Para concluir a compra, pague pelo link: ' + $('Validate Order Response').item.json.payment_link }) }}"
       },
-      "id": "c33f2b45-12e4-4d89-bf88-123445fa0053",
-      "name": "Create Order (Heroku API)",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.1,
-      "position": [720, 300]
-    },
-    {
-      "parameters": {
-        "jsCode": "const orderResponse = $input.first().json;\nconst triggerData = $('Execute Trigger').item.json;\n\n// Extract data from Heroku order response\nconst orderId = orderResponse.id;\nconst paymentLink = orderResponse.payment_link || orderResponse.payment_url || `https://embarcar-e83ea296df06.herokuapp.com/orders/${orderId}`;\nconst customers = orderResponse.customers || [];\nconst customerId = customers.length > 0 ? customers[0].id : null;\n\n// Voucher URL is always /orders/{id}\nconst voucherUrl = `https://embarcar-e83ea296df06.herokuapp.com/orders/${orderId}`;\n\nreturn [{\n  json: {\n    order_id: orderId,\n    payment_link: paymentLink,\n    voucher_url: voucherUrl,\n    customers,\n    customer_id: customerId,\n    phone_number: triggerData.phone_number || $('Prepare Order Payload').item.json.phone_number,\n    passenger_name: $('Prepare Order Payload').item.json.passenger_name,\n    session_id: triggerData.session_id\n  }\n}];"
-      },
-      "id": "extract-order-001",
-      "name": "Extract Order Data",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [940, 300]
-    },
-    {
-      "parameters": {
-        "operation": "executeQuery",
-        "query": "UPDATE conversational_sessions SET current_state = 'EXPECTING_PAYMENT', state_payload = state_payload || jsonb_build_object('order_id', '{{ $json.order_id }}', 'customer_id', '{{ $json.customer_id }}') WHERE id = '{{ $json.session_id }}';"
-      },
-      "id": "d11b34ef-55de-4dfb-bbcc-77aa88dd0055",
-      "name": "Save Order ID in Session",
-      "type": "n8n-nodes-base.postgres",
-      "typeVersion": 2.1,
-      "position": [1160, 300],
-      "credentials": {
-        "postgres": {
-          "id": "stfIva6E9dYUW12u",
-          "name": "Gold Star Postgres"
-        }
-      }
-    },
-    {
-      "parameters": {
-        "method": "POST",
-        "url": "https://graph.facebook.com/v18.0/YOUR_PHONE_NUMBER_ID/messages",
-        "authentication": "genericCredentialType",
-        "genericAuthType": "httpHeaderAuth",
-        "sendBody": true,
-        "bodyParameters": {
-          "parameters": [
-            {
-              "name": "messaging_product",
-              "value": "whatsapp"
-            },
-            {
-              "name": "to",
-              "value": "={{ $('Extract Order Data').item.json.phone_number }}"
-            },
-            {
-              "name": "text",
-              "value": "={ \"body\": \"✅ Pedido criado com sucesso!\\n\\n👤 Passageiro: {{ $('Extract Order Data').item.json.passenger_name }}\\n🎫 Pedido: #{{ $('Extract Order Data').item.json.order_id }}\\n\\n💳 Pague pelo link abaixo:\\n{{ $('Extract Order Data').item.json.payment_link }}\\n\\nApós o pagamento, seu bilhete será enviado aqui automaticamente!\" }"
-            }
-          ]
-        }
-      },
-      "id": "e11c45fg-66de-4dfb-bbcc-77aa88dd0056",
+      "id": "gold-star-0051",
       "name": "Send Payment Link",
       "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.1,
-      "position": [1380, 300]
+      "typeVersion": 4.2,
+      "position": [
+        1370,
+        300
+      ]
     }
   ],
   "connections": {
-    "Execute Trigger": {
-      "main": [[{ "node": "Get Checkout Details", "type": "main", "index": 0 }]]
+    "Payment Creation Webhook": {
+      "main": [
+        [
+          {
+            "node": "Get Checkout Context",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
-    "Get Checkout Details": {
-      "main": [[{ "node": "Prepare Order Payload", "type": "main", "index": 0 }]]
+    "Get Checkout Context": {
+      "main": [
+        [
+          {
+            "node": "Build Order Payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
-    "Prepare Order Payload": {
-      "main": [[{ "node": "Create Order (Heroku API)", "type": "main", "index": 0 }]]
+    "Build Order Payload": {
+      "main": [
+        [
+          {
+            "node": "Create Order",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
-    "Create Order (Heroku API)": {
-      "main": [[{ "node": "Extract Order Data", "type": "main", "index": 0 }]]
+    "Create Order": {
+      "main": [
+        [
+          {
+            "node": "Validate Order Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
-    "Extract Order Data": {
-      "main": [[{ "node": "Save Order ID in Session", "type": "main", "index": 0 }]]
+    "Validate Order Response": {
+      "main": [
+        [
+          {
+            "node": "Save Order",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
-    "Save Order ID in Session": {
-      "main": [[{ "node": "Send Payment Link", "type": "main", "index": 0 }]]
+    "Save Order": {
+      "main": [
+        [
+          {
+            "node": "Send Payment Link",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     }
   },
-  "settings": {},
-  "active": false
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "none",
+    "saveManualExecutions": false
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 0,
+  "active": false,
+  "versionId": "gold-star-0052"
 }
