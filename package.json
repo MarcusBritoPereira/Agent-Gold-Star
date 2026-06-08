@@ -1,0 +1,20 @@
+{
+  "name": "gold-star-automation",
+  "version": "2.0.0",
+  "private": true,
+  "description": "Automação conversacional de venda de passagens hidroviárias via WhatsApp e n8n",
+  "scripts": {
+    "generate:workflows": "node scripts/generate-workflows.js",
+    "validate": "node scripts/validate.js",
+    "test": "node --test tests/*.test.js",
+    "test:all": "npm run validate && npm test",
+    "mock": "node mock-server/server.js",
+    "deploy": "node deploy_to_n8n.js",
+    "activate": "node activate_workflows.js",
+    "cleanup": "node cleanup_n8n.js",
+    "inject:credentials": "node inject_credentials.js"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

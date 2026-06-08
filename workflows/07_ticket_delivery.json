@@ -2,137 +2,209 @@
   "name": "07 - Confirmação de Compra",
   "nodes": [
     {
-      "parameters": {},
-      "id": "a6a2b85e-f00d-4074-b223-9588bf3a0071",
-      "name": "Execute Trigger",
-      "type": "n8n-nodes-base.executeWorkflowTrigger",
-      "typeVersion": 1,
-      "position": [100, 300]
-    },
-    {
       "parameters": {
-        "method": "GET",
-        "url": "=https://embarcar-e83ea296df06.herokuapp.com/orders/seats/{{ $json.order_id }}",
-        "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [
-            {
-              "name": "Accept",
-              "value": "application/json"
-            }
-          ]
-        },
+        "httpMethod": "POST",
+        "path": "ticket-delivery",
+        "responseMode": "onReceived",
         "options": {}
       },
-      "id": "get-order-customers-001",
-      "name": "Get Order Customers (Heroku)",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.1,
-      "position": [300, 300]
-    },
-    {
-      "parameters": {
-        "jsCode": "// Build seat allocation payload\n// The customer data comes from Heroku GET /orders/seats/{order_id}\nconst orderData = $input.first().json;\nconst triggerData = $('Execute Trigger').item.json;\nconst statePayload = triggerData.state_payload || {};\n\nconst customers = orderData.customers || [];\nconst orderId = triggerData.order_id;\nconst tripId = statePayload.trip_id;\n\n// Build order_customers_attributes mapping (using index '0' for first passenger)\nconst orderCustomersAttributes = {};\ncustomers.forEach((customer, idx) => {\n  orderCustomersAttributes[String(idx)] = { id: String(customer.id) };\n});\n\n// Seat numbers — if the user selected a seat, use it; otherwise use '1' as a default\nconst seatNumbers = statePayload.seat_number ? `[${statePayload.seat_number}]` : '[1]';\n\nconst seatPayload = {\n  id: String(orderId),\n  order: {\n    trip_id: String(tripId),\n    seat_numbers: seatNumbers,\n    order_customers_attributes: orderCustomersAttributes\n  }\n};\n\nreturn [{\n  json: {\n    seatPayload,\n    order_id: orderId,\n    phone_number: triggerData.phone_number,\n    full_name: triggerData.full_name || customers[0]?.name || 'Passageiro',\n    voucher_url: `https://embarcar-e83ea296df06.herokuapp.com/orders/${orderId}`,\n    session_id: triggerData.session_id\n  }\n}];"
-      },
-      "id": "build-seat-payload-001",
-      "name": "Build Seat Allocation Payload",
-      "type": "n8n-nodes-base.code",
+      "id": "gold-star-0069",
+      "name": "Ticket Delivery Webhook",
+      "type": "n8n-nodes-base.webhook",
       "typeVersion": 2,
-      "position": [520, 300]
-    },
-    {
-      "parameters": {
-        "method": "POST",
-        "url": "=https://embarcar-e83ea296df06.herokuapp.com/orders/seats/{{ $json.order_id }}",
-        "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [
-            {
-              "name": "Content-Type",
-              "value": "application/json"
-            },
-            {
-              "name": "Accept",
-              "value": "application/json"
-            }
-          ]
-        },
-        "sendBody": true,
-        "contentType": "json",
-        "jsonBody": "={{ JSON.stringify($json.seatPayload) }}",
-        "options": {}
-      },
-      "id": "allocate-seats-001",
-      "name": "Allocate Seats (Heroku API)",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.1,
-      "position": [740, 300]
+      "position": [
+        0,
+        300
+      ]
     },
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "UPDATE conversational_sessions SET current_state = 'COMPLETED', updated_at = NOW() WHERE id = '{{ $('Build Seat Allocation Payload').item.json.session_id }}';"
+        "query": "SELECT s.*,u.phone_number,u.full_name FROM conversational_sessions s JOIN users u ON u.id=s.user_id WHERE s.id=$1 AND s.current_state='PAID';",
+        "options": {
+          "queryReplacement": "={{ [$json.body.session_id] }}"
+        }
       },
-      "id": "complete-session-001",
-      "name": "Update Session to COMPLETED",
+      "id": "gold-star-0070",
+      "name": "Get Paid Order Context",
       "type": "n8n-nodes-base.postgres",
-      "typeVersion": 2.1,
-      "position": [960, 300],
+      "typeVersion": 2.5,
+      "position": [
+        230,
+        300
+      ],
       "credentials": {
         "postgres": {
-          "id": "stfIva6E9dYUW12u",
-          "name": "Gold Star Postgres"
+          "id": "__POSTGRES_CREDENTIAL_ID__",
+          "name": "__POSTGRES_CREDENTIAL_NAME__"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const p=$json.state_payload; const seat=p.seat_number??p.available_seat; if(!seat) throw new Error('Nenhuma poltrona disponível foi registrada'); return [{json:{session_id:$json.id,phone_number:$json.phone_number,full_name:p.passenger_name||$json.full_name||'Passageiro',order_id:p.order_id,allocation:{trip_id:p.trip_id,seat_numbers:[seat]},voucher_url:$env.PUBLIC_BACKEND_URL+'/orders/'+p.order_id}}];"
+      },
+      "id": "gold-star-0071",
+      "name": "Build Seat Allocation",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        460,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.BACKEND_BASE_URL + '/orders/seats/' + $json.order_id }}",
+        "options": {
+          "timeout": 15000,
+          "response": {
+            "response": {
+              "neverError": false
+            }
+          }
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ JSON.stringify($json.allocation) }}"
+      },
+      "id": "gold-star-0072",
+      "name": "Allocate Seat",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        690,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE conversational_sessions SET current_state='COMPLETED',state_payload=state_payload || $2::jsonb WHERE id=$1 AND current_state='PAID' RETURNING *;",
+        "options": {
+          "queryReplacement": "={{ [$('Build Seat Allocation').item.json.session_id, JSON.stringify({ voucher_url: $('Build Seat Allocation').item.json.voucher_url, delivered_at: new Date().toISOString() })] }}"
+        }
+      },
+      "id": "gold-star-0073",
+      "name": "Complete Session",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        920,
+        300
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "__POSTGRES_CREDENTIAL_ID__",
+          "name": "__POSTGRES_CREDENTIAL_NAME__"
         }
       }
     },
     {
       "parameters": {
         "method": "POST",
-        "url": "https://graph.facebook.com/v18.0/YOUR_PHONE_NUMBER_ID/messages",
-        "authentication": "genericCredentialType",
-        "genericAuthType": "httpHeaderAuth",
-        "sendBody": true,
-        "bodyParameters": {
+        "url": "={{ $env.EVOLUTION_API_URL + '/message/sendText/' + $env.EVOLUTION_INSTANCE }}",
+        "options": {
+          "timeout": 15000,
+          "response": {
+            "response": {
+              "neverError": false
+            }
+          }
+        },
+        "sendHeaders": true,
+        "headerParameters": {
           "parameters": [
             {
-              "name": "messaging_product",
-              "value": "whatsapp"
-            },
-            {
-              "name": "to",
-              "value": "={{ $('Build Seat Allocation Payload').item.json.phone_number }}"
-            },
-            {
-              "name": "text",
-              "value": "={ \"body\": \"🎉 Compra confirmada com sucesso, {{ $('Build Seat Allocation Payload').item.json.full_name }}!\\n\\n🎫 Seu bilhete está pronto.\\n\\nAcesse o link abaixo para ver e imprimir sua passagem:\\n{{ $('Build Seat Allocation Payload').item.json.voucher_url }}\\n\\nBoa viagem! ⛵\" }"
+              "name": "apikey",
+              "value": "={{ $env.EVOLUTION_API_KEY }}"
             }
           ]
-        }
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ JSON.stringify({ number: $('Build Seat Allocation').item.json.phone_number, text: '🎉 Compra confirmada, ' + $('Build Seat Allocation').item.json.full_name + '! Seu bilhete está disponível em: ' + $('Build Seat Allocation').item.json.voucher_url }) }}"
       },
-      "id": "send-voucher-001",
-      "name": "Send Voucher via WhatsApp",
+      "id": "gold-star-0074",
+      "name": "Send Voucher",
       "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.1,
-      "position": [1180, 300]
+      "typeVersion": 4.2,
+      "position": [
+        1150,
+        300
+      ]
     }
   ],
   "connections": {
-    "Execute Trigger": {
-      "main": [[{ "node": "Get Order Customers (Heroku)", "type": "main", "index": 0 }]]
+    "Ticket Delivery Webhook": {
+      "main": [
+        [
+          {
+            "node": "Get Paid Order Context",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
-    "Get Order Customers (Heroku)": {
-      "main": [[{ "node": "Build Seat Allocation Payload", "type": "main", "index": 0 }]]
+    "Get Paid Order Context": {
+      "main": [
+        [
+          {
+            "node": "Build Seat Allocation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
-    "Build Seat Allocation Payload": {
-      "main": [[{ "node": "Allocate Seats (Heroku API)", "type": "main", "index": 0 }]]
+    "Build Seat Allocation": {
+      "main": [
+        [
+          {
+            "node": "Allocate Seat",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
-    "Allocate Seats (Heroku API)": {
-      "main": [[{ "node": "Update Session to COMPLETED", "type": "main", "index": 0 }]]
+    "Allocate Seat": {
+      "main": [
+        [
+          {
+            "node": "Complete Session",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
-    "Update Session to COMPLETED": {
-      "main": [[{ "node": "Send Voucher via WhatsApp", "type": "main", "index": 0 }]]
+    "Complete Session": {
+      "main": [
+        [
+          {
+            "node": "Send Voucher",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     }
   },
-  "settings": {},
-  "active": false
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "none",
+    "saveManualExecutions": false
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 0,
+  "active": false,
+  "versionId": "gold-star-0075"
 }

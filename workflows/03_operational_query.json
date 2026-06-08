@@ -2,133 +2,171 @@
   "name": "03 - Consulta Operacional",
   "nodes": [
     {
-      "parameters": {},
-      "id": "a6a2b85e-f00d-4074-b223-9588bf3a0031",
-      "name": "Execute Trigger",
-      "type": "n8n-nodes-base.executeWorkflowTrigger",
-      "typeVersion": 1,
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "operational-query",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "id": "gold-star-0024",
+      "name": "Query Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
       "position": [
-        100,
+        0,
         300
       ]
     },
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "SELECT state_payload FROM conversational_sessions WHERE id = '{{ $json.session_id }}';"
+        "query": "SELECT s.state_payload, u.phone_number FROM conversational_sessions s JOIN users u ON u.id=s.user_id WHERE s.id=$1;",
+        "options": {
+          "queryReplacement": "={{ [$json.body.session_id] }}"
+        }
       },
-      "id": "f58f4b5d-e596-4eb1-b1e1-1188339aa032",
-      "name": "Get Session State",
+      "id": "gold-star-0025",
+      "name": "Get Query Context",
       "type": "n8n-nodes-base.postgres",
-      "typeVersion": 2.1,
+      "typeVersion": 2.5,
       "position": [
-        300,
+        240,
         300
       ],
       "credentials": {
         "postgres": {
-          "id": "stfIva6E9dYUW12u",
-          "name": "Gold Star Postgres"
+          "id": "__POSTGRES_CREDENTIAL_ID__",
+          "name": "__POSTGRES_CREDENTIAL_NAME__"
         }
       }
     },
     {
       "parameters": {
         "method": "GET",
-        "url": "=https://embarcar-e83ea296df06.herokuapp.com/api/routes/show?q[origin_cont]={{ $json.state_payload.origin }}",
-        "authentication": "none"
+        "url": "={{ $env.BACKEND_BASE_URL + '/api/routes/show/' }}",
+        "options": {
+          "timeout": 15000,
+          "response": {
+            "response": {
+              "neverError": false
+            }
+          }
+        },
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "origin",
+              "value": "={{ $json.state_payload.origin || '' }}"
+            },
+            {
+              "name": "destination",
+              "value": "={{ $json.state_payload.destination || '' }}"
+            },
+            {
+              "name": "date",
+              "value": "={{ $json.state_payload.travel_date || '' }}"
+            }
+          ]
+        }
       },
-      "id": "c33f2b45-12e4-4d89-bf88-123445fa0033",
-      "name": "Query Heroku Show API",
+      "id": "gold-star-0026",
+      "name": "Query Routes API",
       "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.1,
+      "typeVersion": 4.2,
       "position": [
-        550,
+        470,
         300
       ]
     },
     {
       "parameters": {
-        "jsCode": "const routes = $input.first().json.routes || [];\nlet text = \"🚢 *Lanchas Gold Star - Rotas e Horários Disponíveis*:\\n\\n\";\nfor (const r of routes) {\n  text += `📍 Rota ID: ${r.id}\\n⛵ ${r.origin} ➔ ${r.destination}\\n📅 ${r.week_day} às ${r.hour}\\n💰 Preço: R$ ${r.speed_boat_price}\\n⏱ Duração: ${r.duration}\\n⚓ Local: ${r.departure_from}\\n📝 Paradas: ${r.stopover || 'Direto'}\\n\\n`;\n}\nif (routes.length === 0) {\n  text = \"Desculpe, não encontrei nenhuma rota de saída para a origem informada no momento.\";\n}\nreturn [{ json: { formatted_text: text } }];"
+        "jsCode": "const context = $('Get Query Context').item.json;\nconst intent = $('Query Webhook').item.json.body.intent;\nconst rows = Array.isArray($json) ? $json : ($json.routes ?? $json.trips ?? [$json]);\nif (!rows.length || !rows[0] || rows[0].available === false) return [{ json: { phone_number: context.phone_number, text: 'Não encontrei viagens com esses dados. Informe origem, destino e data para eu tentar novamente.' } }];\nconst lines = rows.slice(0, 5).map((r) => { const price = r.price ?? (r.price_cents != null ? 'R$ ' + (r.price_cents / 100).toFixed(2).replace('.', ',') : 'consulte'); return '• ' + (r.origin ?? context.state_payload.origin ?? '') + ' → ' + (r.destination ?? context.state_payload.destination ?? '') + ' | ' + (r.departure_time ?? r.time ?? 'horário a confirmar') + ' | ' + price; });\nconst title = intent === 'ASK_PRICES' ? 'Valores encontrados:' : 'Horários encontrados:';\nreturn [{ json: { phone_number: context.phone_number, text: title + '\\n' + lines.join('\\n') } }];"
       },
-      "id": "e44d34bc-a89e-49ff-88ee-123456bb0034",
-      "name": "Format Schedules Text",
+      "id": "gold-star-0027",
+      "name": "Format Query Response",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        780,
+        700,
         300
       ]
     },
     {
       "parameters": {
         "method": "POST",
-        "url": "http://localhost:8088/message/sendText/goldstar",
-        "authentication": "genericCredentialType",
-        "genericAuthType": "httpHeaderAuth",
-        "sendBody": true,
-        "bodyParameters": {
+        "url": "={{ $env.EVOLUTION_API_URL + '/message/sendText/' + $env.EVOLUTION_INSTANCE }}",
+        "options": {
+          "timeout": 15000,
+          "response": {
+            "response": {
+              "neverError": false
+            }
+          }
+        },
+        "sendHeaders": true,
+        "headerParameters": {
           "parameters": [
             {
-              "name": "number",
-              "value": "={{ $('Execute Trigger').item.json.phone_number }}"
-            },
-            {
-              "name": "text",
-              "value": "={{ $json.formatted_text }}"
+              "name": "apikey",
+              "value": "={{ $env.EVOLUTION_API_KEY }}"
             }
           ]
-        }
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ JSON.stringify({ number: $json.phone_number, text: $json.text }) }}"
       },
-      "id": "e11c45fg-66de-4dfb-bbcc-77aa88dd0035",
-      "name": "Send WhatsApp Message",
+      "id": "gold-star-0028",
+      "name": "Send Query Response",
       "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.1,
+      "typeVersion": 4.2,
       "position": [
-        1000,
+        930,
         300
       ]
     }
   ],
   "connections": {
-    "Execute Trigger": {
+    "Query Webhook": {
       "main": [
         [
           {
-            "node": "Get Session State",
+            "node": "Get Query Context",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Get Session State": {
+    "Get Query Context": {
       "main": [
         [
           {
-            "node": "Query Heroku Show API",
+            "node": "Query Routes API",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Query Heroku Show API": {
+    "Query Routes API": {
       "main": [
         [
           {
-            "node": "Format Schedules Text",
+            "node": "Format Query Response",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Format Schedules Text": {
+    "Format Query Response": {
       "main": [
         [
           {
-            "node": "Send WhatsApp Message",
+            "node": "Send Query Response",
             "type": "main",
             "index": 0
           }
@@ -136,6 +174,16 @@
       ]
     }
   },
-  "settings": {},
-  "active": false
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "none",
+    "saveManualExecutions": false
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 0,
+  "active": false,
+  "versionId": "gold-star-0029"
 }

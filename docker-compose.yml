@@ -1,0 +1,95 @@
+name: gold-star
+
+services:
+  postgres:
+    image: ${POSTGRES_IMAGE:-postgres:16-alpine}
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-gold_star}
+      POSTGRES_USER: ${POSTGRES_USER:-gold_star}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?configure POSTGRES_PASSWORD in .env}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./db/migrations:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-gold_star} -d ${POSTGRES_DB:-gold_star}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  n8n:
+    image: ${N8N_IMAGE:-docker.n8n.io/n8nio/n8n:latest}
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mock-api:
+        condition: service_healthy
+    environment:
+      N8N_HOST: ${N8N_HOST:-localhost}
+      N8N_PORT: 5678
+      N8N_PROTOCOL: ${N8N_PROTOCOL:-http}
+      WEBHOOK_URL: ${N8N_WEBHOOK_URL:-http://localhost:5678}
+      N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY:?configure N8N_ENCRYPTION_KEY in .env}
+      N8N_DIAGNOSTICS_ENABLED: "false"
+      N8N_PERSONALIZATION_ENABLED: "false"
+      N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS: "true"
+      DB_TYPE: postgresdb
+      DB_POSTGRESDB_HOST: postgres
+      DB_POSTGRESDB_PORT: 5432
+      DB_POSTGRESDB_DATABASE: ${POSTGRES_DB:-gold_star}
+      DB_POSTGRESDB_USER: ${POSTGRES_USER:-gold_star}
+      DB_POSTGRESDB_PASSWORD: ${POSTGRES_PASSWORD}
+      INTERNAL_N8N_WEBHOOK_URL: ${INTERNAL_N8N_WEBHOOK_URL:-http://n8n:5678}
+      BACKEND_BASE_URL: ${BACKEND_BASE_URL:-http://mock-api:8090}
+      BACKEND_MODE: ${BACKEND_MODE:-mock}
+      PUBLIC_BACKEND_URL: ${PUBLIC_BACKEND_URL:-http://localhost:8090}
+      AI_MODE: ${AI_MODE:-mock}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-5.4-nano}
+      EVOLUTION_API_URL: ${EVOLUTION_API_URL:-http://mock-api:8090}
+      EVOLUTION_API_KEY: ${EVOLUTION_API_KEY:-change-me}
+      EVOLUTION_INSTANCE: ${EVOLUTION_INSTANCE:-goldstar}
+      ASAAS_WEBHOOK_TOKEN: ${ASAAS_WEBHOOK_TOKEN:?configure ASAAS_WEBHOOK_TOKEN in .env}
+      ALERT_WEBHOOK_URL: ${ALERT_WEBHOOK_URL:-http://mock-api:8090/alerts}
+    ports:
+      - "${N8N_PORT:-5678}:5678"
+    volumes:
+      - n8n_data:/home/node/.n8n
+
+  mock-api:
+    image: node:22-alpine
+    working_dir: /app
+    command: ["node", "mock-server/server.js"]
+    restart: unless-stopped
+    environment:
+      PORT: 8090
+      EVOLUTION_API_KEY: ${EVOLUTION_API_KEY:-change-me}
+    ports:
+      - "${MOCK_API_PORT:-8090}:8090"
+    volumes:
+      - ./:/app:ro
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8090/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  evolution-api:
+    profiles: ["live-whatsapp"]
+    image: ${EVOLUTION_IMAGE:-atendai/evolution-api:latest}
+    restart: unless-stopped
+    environment:
+      AUTHENTICATION_API_KEY: ${EVOLUTION_API_KEY:?configure EVOLUTION_API_KEY in .env}
+      SERVER_URL: http://localhost:${EVOLUTION_PORT:-8088}
+    ports:
+      - "${EVOLUTION_PORT:-8088}:8080"
+    volumes:
+      - evolution_data:/evolution/instances
+
+volumes:
+  postgres_data:
+  n8n_data:
+  evolution_data:

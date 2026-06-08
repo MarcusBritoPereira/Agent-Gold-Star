@@ -1,76 +1,62 @@
-# Documentação do Sistema de Automação Gold Star
+# Arquitetura do sistema Gold Star
 
-Esta documentação descreve a arquitetura, os componentes, as ferramentas e as integrações do sistema de venda e reserva de passagens da **Gold Star**.
+## Objetivo
 
----
+O sistema automatiza a consulta e a venda de passagens hidroviárias pelo WhatsApp. A jornada é: mensagem recebida, identificação da intenção, coleta progressiva dos dados, consulta de disponibilidade, criação do pedido, pagamento, alocação da poltrona e envio do voucher.
 
-## 1. Banco de Dados (PostgreSQL)
+## Componentes
 
-O banco de dados armazena dados de usuários, sessões de chat, rotas locais e reservas.
+- **n8n:** orquestra os oito workflows em `workflows/`.
+- **PostgreSQL:** usuários, sessões, transições, deduplicação de mensagens e eventos de pagamento.
+- **Evolution API:** único gateway adotado para entrada e saída do WhatsApp.
+- **OpenAI:** classificador opcional em modo `live`; o modo padrão `mock` permite desenvolvimento sem custo externo.
+- **Backend operacional:** adaptador configurável para viagens, assentos, pedidos e vouchers.
+- **Asaas:** entrega eventos ao webhook autenticado de pagamento.
+- **Receptor de alertas:** endpoint configurável para falhas do n8n.
 
-* **Servidor local:** PostgreSQL rodando no container Docker `upscribe-db` (porta física `5432`).
-  > *Nota de infraestrutura:* O container do banco de dados compartilha o nome `upscribe-db` por questões de ambiente local de desenvolvimento, mas o banco de dados dedicado a este projeto chama-se especificamente **`gold_star`**.
-* **Nome do Banco de Dados:** `gold_star`
-* **Usuário:** `postgres`
-* **Senha:** `postgres`
-* **Tabelas Principais:**
-  * `users`: Cadastro de passageiros (telefone, CPF, nome completo).
-  * `conversational_sessions`: Guarda o estado atual da conversa do chatbot (`START`, `EXPECTING_PAYMENT`, `PAID`, `COMPLETED`, `HUMAN_FALLBACK`) e o payload temporário com os dados da reserva.
-  * `routes`, `trips`, `seats`, `bookings`, `tickets`: Tabelas locais para espelhar ou processar dados da viagem.
+Toda configuração sensível é fornecida por variáveis de ambiente documentadas em `.env.example`.
 
----
+## Máquina de estados
 
-## 2. Evolution API (WhatsApp)
+`START → COLLECTING_TRIP → COLLECTING_PASSENGER → CREATING_PAYMENT → EXPECTING_PAYMENT → PAID → COMPLETED`
 
-A **Evolution API** é utilizada como gateway para conectar a conta do WhatsApp e gerenciar o envio/recebimento de mensagens.
+Estados alternativos: `PAYMENT_EXPIRED`, `HUMAN_HANDOFF` e `FAILED`. A intenção fica separada do estado da conversa, e as entidades extraídas são mescladas em `state_payload` para permitir mensagens fragmentadas.
 
-* **Servidor local:** Docker container `evolution-api` (porta física `8088`).
-* **Interface do Gerenciador (Manager):** http://localhost:8088/manager
-* **Chave de Autenticação (API Key Global):** `gold_star_api_key_123`
-* **Nome da Instância:** `goldstar`
-* **Configuração de Webhook:** A instância está configurada para encaminhar todas as mensagens recebidas (`MESSAGES_UPSERT`) para o webhook do n8n em:
-  `http://host.docker.internal:5678/webhook/whatsapp-webhook`
+## Workflows
 
----
+1. **WhatsApp Incoming Router:** normaliza o evento, ignora mensagens próprias, deduplica pelo ID, cria/atualiza o usuário, recupera uma sessão ativa e chama o classificador.
+2. **IA Intent Detection:** usa classificador real ou mock, valida a saída estruturada, mescla entidades e encaminha para venda, consulta ou atendimento humano.
+3. **Consulta Operacional:** consulta o backend e formata até cinco opções de horário/preço.
+4. **Fluxo de Venda:** identifica campos ausentes, coleta dados progressivamente, consulta viagem e escolhe somente uma poltrona informada como disponível.
+5. **Pagamento Asaas:** cria o pedido, persiste `order_id` e envia o link pelo WhatsApp.
+6. **Webhook Asaas:** autentica, deduplica, processa aprovação/expiração e dispara a entrega.
+7. **Confirmação de Compra:** aloca a poltrona, conclui a sessão e envia o voucher.
+8. **Monitoramento:** remove dados sensíveis do alerta e entrega o erro a um endpoint configurável.
 
-## 3. n8n (Orquestrador de Workflows)
+A comunicação entre workflows usa webhooks internos estáveis, em vez de IDs de workflow específicos de uma instalação.
 
-O **n8n** executa os fluxos de trabalho que recebem as mensagens do WhatsApp, detectam a intenção do usuário, consultam a API externa, integram pagamentos e realizam a emissão do bilhete.
+## Banco de dados
 
-* **Servidor local:** Docker container `n8n` (porta física `5678`).
-* **Chave de API do n8n:** Configurada localmente para deploy via scripts.
-* **Workflows Deploiados (8 fluxos ativos):**
-  1. `01 - WhatsApp Incoming Router`: Recebe a mensagem do WhatsApp, valida o usuário no banco `gold_star`, abre/recupera sessão e encaminha para classificação ou fluxo específico.
-  2. `02 - IA Intent Detection`: Envia a mensagem à OpenAI para classificar a intenção e extrair dados da viagem.
-  3. `03 - Consulta Operacional`: Processa perguntas sobre horários e rotas.
-  4. `04 - Fluxo de Venda`: Verifica se os dados da compra estão completos, checa assentos disponíveis na API da Gold Star e direciona para o pagamento.
-  5. `05 - Pagamento Asaas`: Envia os dados para a API externa, cria o pedido no Heroku e gera o link de pagamento.
-  6. `06 - Webhook Asaas`: Recebe confirmações de pagamento da Asaas e inicia a entrega.
-  7. `07 - Confirmação de Compra`: Reserva os assentos na API externa após pagamento e envia o voucher final no WhatsApp do cliente.
-  8. `08 - Monitoramento`: Monitora erros nos workflows e envia alertas (ex: Slack).
+As migrations em `db/migrations/` criam:
 
----
+- `users` e `conversational_sessions`;
+- `inbound_events` para idempotência de mensagens;
+- `payment_events` para idempotência de pagamentos;
+- `conversation_transitions` para auditoria;
+- `routes`, `trips`, `seats`, `bookings` e `tickets` para operação local ou espelhamento.
 
-## 4. Integração de IA (OpenAI)
+`seed_data.sql` é opcional e idempotente; ele não apaga dados operacionais.
 
-* **Modelo:** `gpt-4o-mini` (API da OpenAI).
-* **Finalidade:** Classificar a mensagem do usuário nas intenções:
-  * `BUY_TICKET` (Comprar passagem)
-  * `ASK_SCHEDULES` (Consultar horários)
-  * `ASK_PRICES` (Consultar preços)
-  * `HUMAN_HELP` (Atendimento humano)
-  * `OTHER`
-* **Extração de Entidades:** Extrai termos como origem, destino, data de viagem, nome do passageiro e CPF diretamente da mensagem de texto.
+## Modos de execução
 
----
+### Mock
 
-## 5. API Backend Externa (Heroku)
+É o padrão do Compose. `mock-server/server.js` implementa o contrato mínimo do backend e captura mensagens/alertas, possibilitando testes seguros.
 
-* **Host Base:** `https://embarcar-e83ea296df06.herokuapp.com`
-* **Endpoints Utilizados:**
-  * `GET /api/routes/`: Listagem de origens e destinos.
-  * `GET /api/routes/show/`: Busca de rotas detalhadas.
-  * `GET /api/routes/available_seats/`: Consulta de mapa de assentos e quantidade disponível.
-  * `POST /api/orders/create`: Criação do pedido (Checkout).
-  * `POST /orders/seats/{order_id}`: Seleção/alocação de poltronas pós-pagamento.
-  * `GET /orders/{id}`: Link do voucher impresso enviado ao cliente.
+### Live
+
+Requer credenciais válidas e a configuração dos serviços externos descrita no README. Segredos nunca devem ser inseridos nos JSONs ou scripts.
+
+## Limites de responsabilidade
+
+O repositório fornece a camada de orquestração e um backend simulado. Em produção, disponibilidade, retenção temporária da poltrona, cobrança e voucher dependem do backend operacional contratado. A homologação real exige credenciais de sandbox/produção e uma URL pública HTTPS para os webhooks.

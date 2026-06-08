@@ -2,215 +2,439 @@
   "name": "04 - Fluxo de Venda",
   "nodes": [
     {
-      "parameters": {},
-      "id": "a6a2b85e-f00d-4074-b223-9588bf3a0041",
-      "name": "Execute Trigger",
-      "type": "n8n-nodes-base.executeWorkflowTrigger",
-      "typeVersion": 1,
-      "position": [100, 300]
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "sales-flow",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "id": "gold-star-0030",
+      "name": "Sales Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        300
+      ]
     },
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "SELECT state_payload FROM conversational_sessions WHERE id = '{{ $json.session_id }}';"
+        "query": "SELECT s.*, u.phone_number, u.full_name, u.cpf FROM conversational_sessions s JOIN users u ON u.id=s.user_id WHERE s.id=$1;",
+        "options": {
+          "queryReplacement": "={{ [$json.body.session_id] }}"
+        }
       },
-      "id": "f58f4b5d-e596-4eb1-b1e1-1188339aa042",
-      "name": "Get Session Payload",
+      "id": "gold-star-0031",
+      "name": "Get Sales Context",
       "type": "n8n-nodes-base.postgres",
-      "typeVersion": 2.1,
-      "position": [300, 300],
+      "typeVersion": 2.5,
+      "position": [
+        230,
+        300
+      ],
       "credentials": {
         "postgres": {
-          "id": "stfIva6E9dYUW12u",
-          "name": "Gold Star Postgres"
+          "id": "__POSTGRES_CREDENTIAL_ID__",
+          "name": "__POSTGRES_CREDENTIAL_NAME__"
         }
       }
     },
     {
       "parameters": {
-        "jsCode": "const payload = $input.first().json.state_payload || {};\nconst missing = [];\n\nif (!payload.origin) missing.push('Origem');\nif (!payload.destination) missing.push('Destino');\nif (!payload.travel_date) missing.push('Data da Viagem');\nif (!payload.passenger_name) missing.push('Nome Completo');\nif (!payload.passenger_cpf) missing.push('CPF');\nif (!payload.passenger_phone) missing.push('Telefone');\nif (!payload.passenger_birthday) missing.push('Data de Nascimento');\nif (!payload.route_id) missing.push('Rota (route_id)');\nif (!payload.trip_id) missing.push('Viagem (trip_id)');\n\nreturn [{ json: { payload, missing, complete: missing.length === 0, session_id: $('Execute Trigger').item.json.session_id, phone_number: $('Execute Trigger').item.json.phone_number } }];"
+        "jsCode": "const payload = $json.state_payload ?? {};\nif (!payload.passenger_name && $json.full_name && $json.full_name !== 'Cliente') payload.passenger_name = $json.full_name;\nif (!payload.passenger_cpf && $json.cpf) payload.passenger_cpf = $json.cpf;\nconst labels = { origin: 'origem', destination: 'destino', travel_date: 'data da viagem', passenger_name: 'nome do passageiro', passenger_cpf: 'CPF do passageiro' };\nconst missing = Object.keys(labels).filter((key) => !payload[key]);\nreturn [{ json: { session_id: $json.id, phone_number: $json.phone_number, payload, complete: missing.length === 0, missing, prompt: missing.length ? 'Para continuar, informe: ' + missing.map((k) => labels[k]).join(', ') + '.' : '' } }];"
       },
-      "id": "c33f2b45-12e4-4d89-bf88-123445fa0043",
-      "name": "Evaluate Completeness",
+      "id": "gold-star-0032",
+      "name": "Evaluate Required Data",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [500, 300]
+      "position": [
+        460,
+        300
+      ]
     },
     {
       "parameters": {
         "conditions": {
-          "boolean": [
+          "options": {
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          },
+          "conditions": [
             {
-              "value1": "={{ $json.complete }}",
-              "value2": true
+              "id": "gold-star-0033",
+              "leftValue": "={{ $json.complete }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
             }
-          ]
+          ],
+          "combinator": "and"
         }
       },
-      "id": "e44d34bc-a89e-49ff-88ee-123456bb0044",
-      "name": "Is Complete?",
+      "id": "gold-star-0034",
+      "name": "Data Complete?",
       "type": "n8n-nodes-base.if",
-      "typeVersion": 1,
-      "position": [700, 300]
+      "typeVersion": 2,
+      "position": [
+        680,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE conversational_sessions SET current_state='COLLECTING_PASSENGER', state_payload=$2::jsonb WHERE id=$1 RETURNING *;",
+        "options": {
+          "queryReplacement": "={{ [$json.session_id, JSON.stringify($json.payload)] }}"
+        }
+      },
+      "id": "gold-star-0035",
+      "name": "Persist Collection State",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        900,
+        450
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "__POSTGRES_CREDENTIAL_ID__",
+          "name": "__POSTGRES_CREDENTIAL_NAME__"
+        }
+      }
     },
     {
       "parameters": {
         "method": "POST",
-        "url": "https://graph.facebook.com/v18.0/YOUR_PHONE_NUMBER_ID/messages",
-        "authentication": "genericCredentialType",
-        "genericAuthType": "httpHeaderAuth",
-        "sendBody": true,
-        "bodyParameters": {
+        "url": "={{ $env.EVOLUTION_API_URL + '/message/sendText/' + $env.EVOLUTION_INSTANCE }}",
+        "options": {
+          "timeout": 15000,
+          "response": {
+            "response": {
+              "neverError": false
+            }
+          }
+        },
+        "sendHeaders": true,
+        "headerParameters": {
           "parameters": [
             {
-              "name": "messaging_product",
-              "value": "whatsapp"
-            },
-            {
-              "name": "to",
-              "value": "={{ $json.phone_number }}"
-            },
-            {
-              "name": "text",
-              "value": "={ \"body\": \"Para continuar a compra, preciso de mais informações:\\n\\n➡️ {{ $json.missing.join('\\n➡️ ') }}\\n\\nPor favor, envie os dados solicitados.\" }"
+              "name": "apikey",
+              "value": "={{ $env.EVOLUTION_API_KEY }}"
             }
           ]
-        }
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ JSON.stringify({ number: $('Evaluate Required Data').item.json.phone_number, text: $('Evaluate Required Data').item.json.prompt }) }}"
       },
-      "id": "d11b34ef-55de-4dfb-bbcc-77aa88dd0045",
+      "id": "gold-star-0036",
       "name": "Request Missing Data",
       "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.1,
-      "position": [950, 150]
+      "typeVersion": 4.2,
+      "position": [
+        1130,
+        450
+      ]
     },
     {
       "parameters": {
         "method": "GET",
-        "url": "=https://embarcar-e83ea296df06.herokuapp.com/api/routes/available_seats?web=false&route_id={{ $json.payload.route_id }}&date={{ $json.payload.travel_date }}",
-        "options": {}
+        "url": "={{ $env.BACKEND_BASE_URL + '/api/routes/available_seats/' }}",
+        "options": {
+          "timeout": 15000,
+          "response": {
+            "response": {
+              "neverError": false
+            }
+          }
+        },
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "origin",
+              "value": "={{ $json.payload.origin }}"
+            },
+            {
+              "name": "destination",
+              "value": "={{ $json.payload.destination }}"
+            },
+            {
+              "name": "date",
+              "value": "={{ $json.payload.travel_date }}"
+            }
+          ]
+        }
       },
-      "id": "e11c45fg-66de-4dfb-bbcc-77aa88dd0046",
-      "name": "Check Available Seats (Heroku)",
+      "id": "gold-star-0037",
+      "name": "Check Availability",
       "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.1,
-      "position": [950, 450]
+      "typeVersion": 4.2,
+      "position": [
+        900,
+        170
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const request = $('Evaluate Required Data').item.json;\nconst trip = $json.trip ?? $json.trips?.[0] ?? $json;\nconst seats = trip.available_seat_numbers ?? trip.seats?.filter((s) => s.status === 'AVAILABLE').map((s) => s.seat_number ?? s.number) ?? [];\nconst seat = request.payload.seat_number ?? seats[0] ?? trip.available_seat;\nconst available = Boolean(trip.id && seat && (trip.available_seats ?? seats.length ?? 0) > 0);\nreturn [{ json: { ...request, available, trip_id: trip.id, route_id: trip.route_id, available_seat: seat, price_cents: trip.price_cents ?? Math.round(Number(trip.price ?? 0) * 100) } }];"
+      },
+      "id": "gold-star-0038",
+      "name": "Select Available Trip and Seat",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1130,
+        170
+      ]
     },
     {
       "parameters": {
         "conditions": {
-          "number": [
+          "options": {
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          },
+          "conditions": [
             {
-              "value1": "={{ $json.available_seats }}",
-              "operation": "larger",
-              "value2": 0
+              "id": "gold-star-0039",
+              "leftValue": "={{ $json.available }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
             }
-          ]
+          ],
+          "combinator": "and"
         }
       },
-      "id": "b22c45aa-77de-4dfc-ccdd-88bb99ee0047",
-      "name": "Seats Available?",
+      "id": "gold-star-0040",
+      "name": "Seat Available?",
       "type": "n8n-nodes-base.if",
-      "typeVersion": 1,
-      "position": [1180, 450]
-    },
-    {
-      "parameters": {
-        "method": "POST",
-        "url": "https://graph.facebook.com/v18.0/YOUR_PHONE_NUMBER_ID/messages",
-        "authentication": "genericCredentialType",
-        "genericAuthType": "httpHeaderAuth",
-        "sendBody": true,
-        "bodyParameters": {
-          "parameters": [
-            {
-              "name": "messaging_product",
-              "value": "whatsapp"
-            },
-            {
-              "name": "to",
-              "value": "={{ $('Execute Trigger').item.json.phone_number }}"
-            },
-            {
-              "name": "text",
-              "value": "={ \"body\": \"😔 Infelizmente não há assentos disponíveis para a data selecionada.\\n\\nGostaria de escolher outra data ou destino?\" }"
-            }
-          ]
-        }
-      },
-      "id": "f33d56bb-88ef-5efd-ddee-99cc00ff0048",
-      "name": "Notify No Seats",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.1,
-      "position": [1420, 600]
+      "typeVersion": 2,
+      "position": [
+        1350,
+        170
+      ]
     },
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "UPDATE conversational_sessions SET current_state = 'EXPECTING_PAYMENT', state_payload = state_payload || '{\"trip_id\": \"{{ $('Check Available Seats (Heroku)').item.json.trip.id }}\"}' WHERE id = '{{ $('Execute Trigger').item.json.session_id }}';"
+        "query": "UPDATE conversational_sessions SET current_state='CREATING_PAYMENT', state_payload=state_payload || $2::jsonb WHERE id=$1 RETURNING *;",
+        "options": {
+          "queryReplacement": "={{ [$json.session_id, JSON.stringify({ trip_id: $json.trip_id, route_id: $json.route_id, available_seat: $json.available_seat, price_cents: $json.price_cents })] }}"
+        }
       },
-      "id": "g44e67cc-99fg-6fge-eeef-00dd11gg0049",
-      "name": "Update Session to Payment",
+      "id": "gold-star-0041",
+      "name": "Prepare Payment State",
       "type": "n8n-nodes-base.postgres",
-      "typeVersion": 2.1,
-      "position": [1420, 300],
+      "typeVersion": 2.5,
+      "position": [
+        1570,
+        80
+      ],
       "credentials": {
         "postgres": {
-          "id": "stfIva6E9dYUW12u",
-          "name": "Gold Star Postgres"
+          "id": "__POSTGRES_CREDENTIAL_ID__",
+          "name": "__POSTGRES_CREDENTIAL_NAME__"
         }
       }
     },
     {
       "parameters": {
-        "workflowId": {
-          "__rl": true,
-          "value": "mvY9FbuCuMumy11K",
-          "mode": "id"
-        },
-        "workflowInputs": {
-          "mappingMode": "defineBelow",
-          "value": {
-            "session_id": "={{ $('Execute Trigger').item.json.session_id }}",
-            "phone_number": "={{ $('Execute Trigger').item.json.phone_number }}"
+        "method": "POST",
+        "url": "={{ $env.INTERNAL_N8N_WEBHOOK_URL + '/webhook/create-payment' }}",
+        "options": {
+          "timeout": 15000,
+          "response": {
+            "response": {
+              "neverError": false
+            }
           }
-        }
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ JSON.stringify({ session_id: $json.id }) }}"
       },
-      "id": "h55f78dd-00gh-7ghf-fff0-11ee22hh0050",
-      "name": "Trigger Payment Flow (WF05)",
-      "type": "n8n-nodes-base.executeWorkflow",
-      "typeVersion": 1,
-      "position": [1650, 300]
+      "id": "gold-star-0042",
+      "name": "Call Payment Workflow",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1790,
+        80
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.EVOLUTION_API_URL + '/message/sendText/' + $env.EVOLUTION_INSTANCE }}",
+        "options": {
+          "timeout": 15000,
+          "response": {
+            "response": {
+              "neverError": false
+            }
+          }
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $env.EVOLUTION_API_KEY }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ JSON.stringify({ number: $('Evaluate Required Data').item.json.phone_number, text: 'Não há poltronas disponíveis para essa viagem. Posso consultar outra data para você.' }) }}"
+      },
+      "id": "gold-star-0043",
+      "name": "Notify No Availability",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1570,
+        260
+      ]
     }
   ],
   "connections": {
-    "Execute Trigger": {
-      "main": [[{ "node": "Get Session Payload", "type": "main", "index": 0 }]]
-    },
-    "Get Session Payload": {
-      "main": [[{ "node": "Evaluate Completeness", "type": "main", "index": 0 }]]
-    },
-    "Evaluate Completeness": {
-      "main": [[{ "node": "Is Complete?", "type": "main", "index": 0 }]]
-    },
-    "Is Complete?": {
+    "Sales Webhook": {
       "main": [
-        [{ "node": "Check Available Seats (Heroku)", "type": "main", "index": 0 }],
-        [{ "node": "Request Missing Data", "type": "main", "index": 0 }]
+        [
+          {
+            "node": "Get Sales Context",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     },
-    "Check Available Seats (Heroku)": {
-      "main": [[{ "node": "Seats Available?", "type": "main", "index": 0 }]]
-    },
-    "Seats Available?": {
+    "Get Sales Context": {
       "main": [
-        [{ "node": "Update Session to Payment", "type": "main", "index": 0 }],
-        [{ "node": "Notify No Seats", "type": "main", "index": 0 }]
+        [
+          {
+            "node": "Evaluate Required Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     },
-    "Update Session to Payment": {
-      "main": [[{ "node": "Trigger Payment Flow (WF05)", "type": "main", "index": 0 }]]
+    "Evaluate Required Data": {
+      "main": [
+        [
+          {
+            "node": "Data Complete?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Data Complete?": {
+      "main": [
+        [
+          {
+            "node": "Check Availability",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Persist Collection State",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Persist Collection State": {
+      "main": [
+        [
+          {
+            "node": "Request Missing Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Availability": {
+      "main": [
+        [
+          {
+            "node": "Select Available Trip and Seat",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Select Available Trip and Seat": {
+      "main": [
+        [
+          {
+            "node": "Seat Available?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Seat Available?": {
+      "main": [
+        [
+          {
+            "node": "Prepare Payment State",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Notify No Availability",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Payment State": {
+      "main": [
+        [
+          {
+            "node": "Call Payment Workflow",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     }
   },
-  "settings": {},
-  "active": false
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "none",
+    "saveManualExecutions": false
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 0,
+  "active": false,
+  "versionId": "gold-star-0044"
 }

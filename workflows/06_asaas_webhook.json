@@ -5,171 +5,441 @@
       "parameters": {
         "httpMethod": "POST",
         "path": "asaas-payment",
+        "responseMode": "onReceived",
         "options": {}
       },
-      "id": "a6a2b85e-f00d-4074-b223-9588bf3a0061",
-      "name": "Webhook Trigger",
+      "id": "gold-star-0053",
+      "name": "Asaas Webhook",
       "type": "n8n-nodes-base.webhook",
-      "typeVersion": 1,
-      "position": [100, 300]
+      "typeVersion": 2,
+      "position": [
+        0,
+        300
+      ]
     },
     {
       "parameters": {
-        "dataType": "string",
-        "value1": "={{ $json.body.event }}",
-        "rules": {
-          "rules": [
-            { "value2": "PAYMENT_RECEIVED" },
-            { "value2": "PAYMENT_OVERDUE" }
-          ]
-        },
-        "fallbackOutput": 2
+        "jsCode": "const headers=$json.headers??{}; const body=$json.body??$json; const expected=$env.ASAAS_WEBHOOK_TOKEN; const supplied=headers['asaas-access-token']??headers['x-webhook-token']??body.token; if(!expected||supplied!==expected) throw new Error('Webhook de pagamento não autorizado'); const payment=body.payment??body; const event=String(body.event??payment.status??'').toUpperCase(); const gatewayEventId=String(body.id??payment.id??''); const orderId=String(payment.externalReference??payment.external_reference??''); if(!gatewayEventId||!orderId) throw new Error('Evento sem identificador ou order_id'); const approved=['PAYMENT_RECEIVED','PAYMENT_CONFIRMED','RECEIVED','CONFIRMED'].includes(event); const expired=['PAYMENT_OVERDUE','PAYMENT_DELETED','OVERDUE','EXPIRED'].includes(event); return [{json:{gateway_event_id:gatewayEventId,order_id:orderId,event_type:event,approved,expired,raw_payload:body}}];"
       },
-      "id": "f58f4b5d-e596-4eb1-b1e1-1188339aa062",
-      "name": "Route Payment Status",
-      "type": "n8n-nodes-base.switch",
-      "typeVersion": 1,
-      "position": [320, 300]
-    },
-    {
-      "parameters": {
-        "jsCode": "// Extract order_id from the Asaas webhook payload\n// Asaas sends payment info; we need to match it to an order\n// The externalReference or description contains the Heroku order_id\nconst payment = $input.first().json.body.payment || {};\nconst orderId = payment.externalReference || payment.description?.match(/\\d+/)?.[0] || null;\n\nreturn [{\n  json: {\n    order_id: orderId,\n    payment_gateway_id: payment.id,\n    payment_value: payment.value,\n    net_value: payment.netValue,\n    payment_date: payment.paymentDate || payment.confirmedDate\n  }\n}];"
-      },
-      "id": "extract-order-paid-001",
-      "name": "Extract Order ID from Webhook",
+      "id": "gold-star-0054",
+      "name": "Validate and Normalize Payment",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [550, 200]
+      "position": [
+        240,
+        300
+      ]
     },
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "SELECT s.id as session_id, s.state_payload, u.phone_number, u.full_name FROM conversational_sessions s INNER JOIN users u ON s.user_id = u.id WHERE s.state_payload->>'order_id' = '{{ $json.order_id }}' LIMIT 1;"
+        "query": "WITH inserted AS (INSERT INTO payment_events(gateway_event_id,order_id,event_type,payload) VALUES($1,$2,$3,$4::jsonb) ON CONFLICT DO NOTHING RETURNING 1) SELECT EXISTS(SELECT 1 FROM inserted) AS is_new;",
+        "options": {
+          "queryReplacement": "={{ [$('Validate and Normalize Payment').item.json.gateway_event_id, $('Validate and Normalize Payment').item.json.order_id, $('Validate and Normalize Payment').item.json.event_type, JSON.stringify($('Validate and Normalize Payment').item.json.raw_payload)] }}"
+        }
       },
-      "id": "get-session-by-order-001",
-      "name": "Find Session by Order ID",
+      "id": "gold-star-0055",
+      "name": "Register Payment Event",
       "type": "n8n-nodes-base.postgres",
-      "typeVersion": 2.1,
-      "position": [780, 200],
+      "typeVersion": 2.5,
+      "position": [
+        470,
+        300
+      ],
       "credentials": {
         "postgres": {
-          "id": "stfIva6E9dYUW12u",
-          "name": "Gold Star Postgres"
+          "id": "__POSTGRES_CREDENTIAL_ID__",
+          "name": "__POSTGRES_CREDENTIAL_NAME__"
         }
       }
     },
     {
       "parameters": {
-        "operation": "executeQuery",
-        "query": "UPDATE conversational_sessions SET current_state = 'PAID', updated_at = NOW() WHERE id = '{{ $json.session_id }}';"
-      },
-      "id": "c33f2b45-12e4-4d89-bf88-123445fa0063",
-      "name": "Update Session to PAID",
-      "type": "n8n-nodes-base.postgres",
-      "typeVersion": 2.1,
-      "position": [1010, 200],
-      "credentials": {
-        "postgres": {
-          "id": "stfIva6E9dYUW12u",
-          "name": "Gold Star Postgres"
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "gold-star-0056",
+              "leftValue": "={{ $json.is_new }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
         }
-      }
+      },
+      "id": "gold-star-0057",
+      "name": "Is New Payment Event?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        690,
+        300
+      ]
     },
     {
       "parameters": {
-        "workflowId": {
-          "__rl": true,
-          "value": "Vn1Ak5aWMxiJy1kP",
-          "mode": "id"
-        },
-        "workflowInputs": {
-          "mappingMode": "defineBelow",
-          "value": {
-            "order_id": "={{ $('Extract Order ID from Webhook').item.json.order_id }}",
-            "session_id": "={{ $json.session_id }}",
-            "phone_number": "={{ $json.phone_number }}",
-            "full_name": "={{ $json.full_name }}",
-            "state_payload": "={{ $json.state_payload }}"
-          }
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "gold-star-0058",
+              "leftValue": "={{ $('Validate and Normalize Payment').item.json.approved }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
         }
       },
-      "id": "e44d34bc-a89e-49ff-88ee-123456bb0064",
-      "name": "Trigger Ticket Delivery (WF07)",
-      "type": "n8n-nodes-base.executeWorkflow",
-      "typeVersion": 1,
-      "position": [1240, 200]
+      "id": "gold-star-0059",
+      "name": "Payment Approved?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        910,
+        220
+      ]
     },
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "UPDATE conversational_sessions SET current_state = 'PAYMENT_EXPIRED', updated_at = NOW() WHERE state_payload->>'order_id' = '{{ $('Route Payment Status').item.json.body.payment.externalReference }}';"
+        "query": "UPDATE conversational_sessions SET current_state='PAID' WHERE state_payload->>'order_id'=$1 AND current_state='EXPECTING_PAYMENT' RETURNING id,state_payload;",
+        "options": {
+          "queryReplacement": "={{ [$('Validate and Normalize Payment').item.json.order_id] }}"
+        }
       },
-      "id": "d11b34ef-55de-4dfb-bbcc-77aa88dd0065",
-      "name": "Update Session to EXPIRED",
+      "id": "gold-star-0060",
+      "name": "Mark Session Paid",
       "type": "n8n-nodes-base.postgres",
-      "typeVersion": 2.1,
-      "position": [550, 450],
+      "typeVersion": 2.5,
+      "position": [
+        1130,
+        100
+      ],
       "credentials": {
         "postgres": {
-          "id": "stfIva6E9dYUW12u",
-          "name": "Gold Star Postgres"
+          "id": "__POSTGRES_CREDENTIAL_ID__",
+          "name": "__POSTGRES_CREDENTIAL_NAME__"
         }
       }
     },
     {
       "parameters": {
         "method": "POST",
-        "url": "https://graph.facebook.com/v18.0/YOUR_PHONE_NUMBER_ID/messages",
-        "authentication": "genericCredentialType",
-        "genericAuthType": "httpHeaderAuth",
-        "sendBody": true,
-        "bodyParameters": {
-          "parameters": [
-            {
-              "name": "messaging_product",
-              "value": "whatsapp"
-            },
-            {
-              "name": "to",
-              "value": "={{ $('Find Session by Order ID').item.json.phone_number }}"
-            },
-            {
-              "name": "text",
-              "value": "={ \"body\": \"⏰ Seu pagamento venceu e a reserva foi cancelada.\\n\\nSe ainda quiser viajar, inicie uma nova busca respondendo a esta mensagem.\" }"
+        "url": "={{ $env.INTERNAL_N8N_WEBHOOK_URL + '/webhook/ticket-delivery' }}",
+        "options": {
+          "timeout": 15000,
+          "response": {
+            "response": {
+              "neverError": false
             }
-          ]
+          }
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ JSON.stringify({ session_id: $json.id, order_id: $('Validate and Normalize Payment').item.json.order_id }) }}"
+      },
+      "id": "gold-star-0061",
+      "name": "Call Ticket Delivery",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1360,
+        100
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "gold-star-0062",
+              "leftValue": "={{ $('Validate and Normalize Payment').item.json.expired }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
         }
       },
-      "id": "notify-expired-001",
+      "id": "gold-star-0063",
+      "name": "Payment Expired?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1130,
+        350
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE conversational_sessions SET current_state='PAYMENT_EXPIRED' WHERE state_payload->>'order_id'=$1 AND current_state='EXPECTING_PAYMENT' RETURNING id,user_id;",
+        "options": {
+          "queryReplacement": "={{ [$('Validate and Normalize Payment').item.json.order_id] }}"
+        }
+      },
+      "id": "gold-star-0064",
+      "name": "Mark Payment Expired",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        1360,
+        300
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "__POSTGRES_CREDENTIAL_ID__",
+          "name": "__POSTGRES_CREDENTIAL_NAME__"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT u.phone_number FROM users u JOIN conversational_sessions s ON s.user_id=u.id WHERE s.id=$1;",
+        "options": {
+          "queryReplacement": "={{ [$json.id] }}"
+        }
+      },
+      "id": "gold-star-0065",
+      "name": "Get Expired Payment User",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        1570,
+        300
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "__POSTGRES_CREDENTIAL_ID__",
+          "name": "__POSTGRES_CREDENTIAL_NAME__"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.EVOLUTION_API_URL + '/message/sendText/' + $env.EVOLUTION_INSTANCE }}",
+        "options": {
+          "timeout": 15000,
+          "response": {
+            "response": {
+              "neverError": false
+            }
+          }
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $env.EVOLUTION_API_KEY }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ JSON.stringify({ number: $json.phone_number, text: 'O prazo do pagamento expirou. Se desejar, envie uma nova mensagem para refazer a compra.' }) }}"
+      },
+      "id": "gold-star-0066",
       "name": "Notify Payment Expired",
       "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.1,
-      "position": [780, 450]
+      "typeVersion": 4.2,
+      "position": [
+        1790,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE payment_events SET processing_status='PROCESSED', processed_at=now() WHERE gateway_event_id=$1;",
+        "options": {
+          "queryReplacement": "={{ [$('Validate and Normalize Payment').item.json.gateway_event_id] }}"
+        }
+      },
+      "id": "gold-star-0067",
+      "name": "Mark Event Processed",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        1570,
+        100
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "__POSTGRES_CREDENTIAL_ID__",
+          "name": "__POSTGRES_CREDENTIAL_NAME__"
+        }
+      }
     }
   ],
   "connections": {
-    "Webhook Trigger": {
-      "main": [[{ "node": "Route Payment Status", "type": "main", "index": 0 }]]
-    },
-    "Route Payment Status": {
+    "Asaas Webhook": {
       "main": [
-        [{ "node": "Extract Order ID from Webhook", "type": "main", "index": 0 }],
-        [{ "node": "Update Session to EXPIRED", "type": "main", "index": 0 }]
+        [
+          {
+            "node": "Validate and Normalize Payment",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     },
-    "Extract Order ID from Webhook": {
-      "main": [[{ "node": "Find Session by Order ID", "type": "main", "index": 0 }]]
+    "Validate and Normalize Payment": {
+      "main": [
+        [
+          {
+            "node": "Register Payment Event",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
-    "Find Session by Order ID": {
-      "main": [[{ "node": "Update Session to PAID", "type": "main", "index": 0 }]]
+    "Register Payment Event": {
+      "main": [
+        [
+          {
+            "node": "Is New Payment Event?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
-    "Update Session to PAID": {
-      "main": [[{ "node": "Trigger Ticket Delivery (WF07)", "type": "main", "index": 0 }]]
+    "Is New Payment Event?": {
+      "main": [
+        [
+          {
+            "node": "Payment Approved?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
-    "Update Session to EXPIRED": {
-      "main": [[{ "node": "Notify Payment Expired", "type": "main", "index": 0 }]]
+    "Payment Approved?": {
+      "main": [
+        [
+          {
+            "node": "Mark Session Paid",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Payment Expired?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mark Session Paid": {
+      "main": [
+        [
+          {
+            "node": "Call Ticket Delivery",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call Ticket Delivery": {
+      "main": [
+        [
+          {
+            "node": "Mark Event Processed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Payment Expired?": {
+      "main": [
+        [
+          {
+            "node": "Mark Payment Expired",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mark Payment Expired": {
+      "main": [
+        [
+          {
+            "node": "Get Expired Payment User",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Expired Payment User": {
+      "main": [
+        [
+          {
+            "node": "Notify Payment Expired",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Notify Payment Expired": {
+      "main": [
+        [
+          {
+            "node": "Mark Event Processed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     }
   },
-  "settings": {},
-  "active": false
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "none",
+    "saveManualExecutions": false
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 0,
+  "active": false,
+  "versionId": "gold-star-0068"
 }
