@@ -36,6 +36,7 @@ services:
       N8N_DIAGNOSTICS_ENABLED: "false"
       N8N_PERSONALIZATION_ENABLED: "false"
       N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS: "true"
+      N8N_BLOCK_ENV_ACCESS_IN_NODE: "false"
       DB_TYPE: postgresdb
       DB_POSTGRESDB_HOST: postgres
       DB_POSTGRESDB_PORT: 5432
@@ -72,7 +73,7 @@ services:
     volumes:
       - ./:/app:ro
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:8090/health"]
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8090/health"]
       interval: 5s
       timeout: 3s
       retries: 20

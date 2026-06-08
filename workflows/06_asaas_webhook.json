@@ -141,7 +141,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "={{ $env.INTERNAL_N8N_WEBHOOK_URL + '/webhook/ticket-delivery' }}",
+        "url": "http://n8n:5678/webhook/ticket-delivery",
         "options": {
           "timeout": 15000,
           "response": {
@@ -434,8 +434,8 @@
   "settings": {
     "executionOrder": "v1",
     "saveDataErrorExecution": "all",
-    "saveDataSuccessExecution": "none",
-    "saveManualExecutions": false
+    "saveDataSuccessExecution": "all",
+    "saveManualExecutions": true
   },
   "staticData": null,
   "tags": [],

@@ -87,7 +87,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "UPDATE conversational_sessions SET current_state='COLLECTING_PASSENGER', state_payload=$2::jsonb WHERE id=$1 RETURNING *;",
+        "query": "UPDATE conversational_sessions\nSET current_state = CASE\n    WHEN NOT ($2::jsonb ? 'origin') OR NOT ($2::jsonb ? 'destination') OR NOT ($2::jsonb ? 'travel_date')\n      THEN 'COLLECTING_TRIP'::conversation_state\n    WHEN NOT ($2::jsonb ? 'passenger_name') OR NOT ($2::jsonb ? 'passenger_cpf')\n      THEN 'COLLECTING_PASSENGER'::conversation_state\n    ELSE current_state\n  END,\n  state_payload = $2::jsonb\nWHERE id=$1\nRETURNING *;",
         "options": {
           "queryReplacement": "={{ [$json.session_id, JSON.stringify($json.payload)] }}"
         }
@@ -145,7 +145,7 @@
     {
       "parameters": {
         "method": "GET",
-        "url": "={{ $env.BACKEND_BASE_URL + '/api/routes/available_seats/' }}",
+        "url": "http://mock-api:8090/api/routes/available_seats/",
         "options": {
           "timeout": 15000,
           "response": {
@@ -251,7 +251,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "={{ $env.INTERNAL_N8N_WEBHOOK_URL + '/webhook/create-payment' }}",
+        "url": "http://n8n:5678/webhook/create-payment",
         "options": {
           "timeout": 15000,
           "response": {
@@ -429,8 +429,8 @@
   "settings": {
     "executionOrder": "v1",
     "saveDataErrorExecution": "all",
-    "saveDataSuccessExecution": "none",
-    "saveManualExecutions": false
+    "saveDataSuccessExecution": "all",
+    "saveManualExecutions": true
   },
   "staticData": null,
   "tags": [],

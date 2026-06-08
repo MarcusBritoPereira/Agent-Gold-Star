@@ -56,7 +56,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "={{ $env.BACKEND_BASE_URL + '/api/orders/create' }}",
+        "url": "http://mock-api:8090/api/orders/create",
         "options": {
           "timeout": 15000,
           "response": {
@@ -223,8 +223,8 @@
   "settings": {
     "executionOrder": "v1",
     "saveDataErrorExecution": "all",
-    "saveDataSuccessExecution": "none",
-    "saveManualExecutions": false
+    "saveDataSuccessExecution": "all",
+    "saveManualExecutions": true
   },
   "staticData": null,
   "tags": [],
