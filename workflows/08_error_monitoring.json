@@ -27,8 +27,39 @@
     },
     {
       "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "gold-star-0078",
+              "leftValue": "={{ Boolean($env.ALERT_WEBHOOK_URL || $env.SLACK_WEBHOOK_URL) }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "id": "gold-star-0079",
+      "name": "Alert URL Configured?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        480,
+        300
+      ]
+    },
+    {
+      "parameters": {
         "method": "POST",
-        "url": "={{ $env.ALERT_WEBHOOK_URL }}",
+        "url": "={{ $env.ALERT_WEBHOOK_URL || $env.SLACK_WEBHOOK_URL }}",
         "options": {
           "timeout": 15000,
           "response": {
@@ -42,12 +73,12 @@
         "rawContentType": "application/json",
         "body": "={{ JSON.stringify({ text: $json.text }) }}"
       },
-      "id": "gold-star-0078",
+      "id": "gold-star-0080",
       "name": "Send Alert",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        480,
+        720,
         300
       ]
     }
@@ -65,6 +96,17 @@
       ]
     },
     "Build Redacted Alert": {
+      "main": [
+        [
+          {
+            "node": "Alert URL Configured?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Alert URL Configured?": {
       "main": [
         [
           {
@@ -87,5 +129,5 @@
   "tags": [],
   "triggerCount": 0,
   "active": false,
-  "versionId": "gold-star-0079"
+  "versionId": "gold-star-0081"
 }
