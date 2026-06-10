@@ -14,10 +14,12 @@ async function main() {
     const match = existing.find((item) => item.name === payload.name);
     if (match) {
       await request(`/workflows/${match.id}`, { method: 'PUT', body: JSON.stringify(payload) });
-      console.log(`updated ${payload.name} (${match.id})`);
+      await request(`/workflows/${match.id}/activate`, { method: 'POST', body: '{}' });
+      console.log(`updated and activated ${payload.name} (${match.id})`);
     } else {
       const created = await request('/workflows', { method: 'POST', body: JSON.stringify(payload) });
-      console.log(`created ${payload.name} (${created.id})`);
+      await request(`/workflows/${created.id}/activate`, { method: 'POST', body: '{}' });
+      console.log(`created and activated ${payload.name} (${created.id})`);
     }
   }
 }

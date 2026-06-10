@@ -20,7 +20,7 @@ function client() {
 
 function deployableWorkflow(workflow, config) {
   const copy = structuredClone(workflow);
-  copy.active = true;
+  delete copy.active;
   delete copy.id;
   delete copy.versionId;
   delete copy.triggerCount;
