@@ -64,7 +64,7 @@ async function main() {
       webhook: {
         enabled: true,
         url: webhookUrl,
-        byEvents: true,
+        byEvents: false,
         events: ['MESSAGES_UPSERT', 'SEND_MESSAGE']
       }
     })
