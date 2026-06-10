@@ -8,7 +8,7 @@ async function main() {
   // Use a URL interna do docker-compose para a comunicação local do script se rodar no VPS,
   // ou a URL externa se rodar fora do docker.
   const isVps = process.cwd().includes('/opt/gold-star');
-  const evoUrl = isVps ? 'http://evolution-api:8080' : (process.env.EVOLUTION_API_URL || 'http://localhost:8088');
+  const evoUrl = isVps ? 'http://localhost:8088' : (process.env.EVOLUTION_API_URL || 'http://localhost:8088');
   const n8nBaseUrl = isVps ? 'https://n8n.lanchasgoldstar.com.br' : (process.env.N8N_WEBHOOK_URL || 'http://localhost:5679');
 
   console.log('=== Iniciando Configuração do Modo Live ===');
