@@ -57,7 +57,8 @@
     {
       "parameters": {
         "contextWindowLength": 10,
-        "sessionKey": "={{ $json.body.session_id }}"
+        "sessionIdType": "customKey",
+        "sessionKey": "={{ $('Agent Webhook').item.json.body.session_id }}"
       },
       "id": "gold-star-agent-memory",
       "name": "Window Buffer Memory",
