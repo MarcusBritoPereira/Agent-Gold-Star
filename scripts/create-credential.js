@@ -11,7 +11,14 @@ async function createGeminiCredential() {
 
   const { request } = client();
   
-  // Create or Update credential
+  // Debug credential type
+  try {
+    const types = await request('/credential-types');
+    const palm = types.data.find(t => t.name === 'googlePalmApi');
+    console.log("googlePalmApi schema:", JSON.stringify(palm?.properties, null, 2));
+  } catch (e) {
+    console.log(e.message);
+  }
   try {
     const existing = await request('/credentials');
     const existingCred = existing.data?.find(c => c.name === 'Gold Star Gemini API');
