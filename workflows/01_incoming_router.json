@@ -145,7 +145,7 @@
         "sendBody": true,
         "contentType": "raw",
         "rawContentType": "application/json",
-        "body": "={{ JSON.stringify({ session_id: $json.id, user_id: $json.user_id, phone_number: $('Normalize and Validate Event').item.json.phone_number, message: $('Normalize and Validate Event').item.json.message, message_type: $('Normalize and Validate Event').item.json.message_type, current_state: $json.current_state }) }}"
+        "body": "={{ JSON.stringify({ session_id: $json.id, user_id: $json.user_id, phone_number: $('Normalize and Validate Event').item.json.phone_number, message: $('Normalize and Validate Event').item.json.message, message_type: $('Normalize and Validate Event').item.json.message_type, current_state: $json.current_state, state_payload: $json.state_payload }) }}"
       },
       "id": "gold-star-0008",
       "name": "Call Intent Workflow",
