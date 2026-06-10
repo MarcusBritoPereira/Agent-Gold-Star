@@ -43,8 +43,8 @@ function http(name, method, url, position, options = {}) {
 function ifNode(name, leftValue, operation, position, rightValue = '') {
   return node(name, 'n8n-nodes-base.if', { conditions: { options: { caseSensitive: true, typeValidation: 'strict' }, conditions: [{ id: id(), leftValue, rightValue, operator: { type: 'boolean', operation, singleValue: true } }], combinator: 'and' } }, position, { typeVersion: 2 });
 }
-function switchNode(name, expression, values, position) {
-  return node(name, 'n8n-nodes-base.switch', { dataType: 'string', value1: expression, rules: { rules: values.map(value2 => ({ value2 })) }, fallbackOutput: values.length }, position, { typeVersion: 1 });
+function switchNode(name, expression, values, position, fallbackOutput = values.length - 1) {
+  return node(name, 'n8n-nodes-base.switch', { dataType: 'string', value1: expression, rules: { rules: values.map(value2 => ({ value2 })) }, fallbackOutput }, position, { typeVersion: 1 });
 }
 function connect(connections, from, to, output = 0) {
   if (!connections[from]) connections[from] = { main: [] };
@@ -245,7 +245,7 @@ SET intent = CASE
     expires_at = now() + interval '30 minutes'
 WHERE id = $1
 RETURNING *;`, "[$json.session_id, $json.intent, JSON.stringify($json.entities), $json.message || $json.body?.message || '']", [1110, 300]),
-    switchNode('Route Intent', "={{ ['CONFIRMING_ORDER','CREATING_PAYMENT'].includes($json.current_state) ? 'BUY_TICKET' : ($json.intent || $('Validate Classification').item.json.intent) }}", ['BUY_TICKET', 'ASK_SCHEDULES', 'ASK_PRICES', 'HUMAN_HELP'], [1330, 300]),
+    switchNode('Route Intent', "={{ ['CONFIRMING_ORDER','CREATING_PAYMENT'].includes($json.current_state) ? 'BUY_TICKET' : ($json.intent || $('Validate Classification').item.json.intent) }}", ['BUY_TICKET', 'ASK_SCHEDULES', 'ASK_PRICES', 'HUMAN_HELP', 'OTHER'], [1330, 300]),
     http('Call Sales Workflow', 'POST', "={{ $env.INTERNAL_N8N_WEBHOOK_URL + '/webhook/sales-flow' }}", [1560, 100], { jsonBody: "={{ JSON.stringify({ session_id: $json.id, phone_number: $('Validate Classification').item.json.phone_number }) }}" }),
     http('Call Query Workflow', 'POST', "={{ $env.INTERNAL_N8N_WEBHOOK_URL + '/webhook/operational-query' }}", [1560, 240], { jsonBody: "={{ JSON.stringify({ session_id: $json.id, phone_number: $('Validate Classification').item.json.phone_number, intent: $('Validate Classification').item.json.intent }) }}" }),
     evolutionSend('Send Human Handoff', "'Entendi. Encaminhei sua conversa para atendimento humano. Um atendente continuará por aqui.'", "$('Validate Classification').item.json.phone_number", [1560, 390]),

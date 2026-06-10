@@ -17,6 +17,23 @@ test('all workflow connections target existing nodes', () => {
     }
   }
 });
+
+test('switch nodes only use supported output indexes', () => {
+  for (const file of files) {
+    const workflow = JSON.parse(fs.readFileSync(path.join(directory, file), 'utf8'));
+    const nodesByName = new Map(workflow.nodes.map((node) => [node.name, node]));
+    for (const node of workflow.nodes.filter((candidate) => candidate.type === 'n8n-nodes-base.switch')) {
+      const outputCount = node.parameters.rules.rules.length;
+      assert.ok(Number.isInteger(node.parameters.fallbackOutput), `${file}/${node.name}/fallbackOutput`);
+      assert.ok(node.parameters.fallbackOutput >= 0 && node.parameters.fallbackOutput < outputCount, `${file}/${node.name}/fallbackOutput`);
+      const sourceConnections = workflow.connections[node.name]?.main || [];
+      sourceConnections.forEach((branch, index) => {
+        if (branch?.length) assert.ok(index < outputCount, `${file}/${node.name}/output/${index}`);
+      });
+      assert.equal(nodesByName.get(node.name), node);
+    }
+  }
+});
 test('PostgreSQL nodes use positional replacements', () => {
   for (const file of files) {
     const workflow = JSON.parse(fs.readFileSync(path.join(directory, file), 'utf8'));

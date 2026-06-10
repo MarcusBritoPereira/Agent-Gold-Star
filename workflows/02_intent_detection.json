@@ -162,6 +162,9 @@
             },
             {
               "value2": "HUMAN_HELP"
+            },
+            {
+              "value2": "OTHER"
             }
           ]
         },

@@ -8,11 +8,20 @@ const errors = [];
 if (files.length !== 8) errors.push(`expected 8 production workflows, found ${files.length}`);
 for (const file of files) {
   const workflow = JSON.parse(fs.readFileSync(path.join(workflowDirectory, file), 'utf8'));
-  const names = new Set((workflow.nodes || []).map((item) => item.name));
+  const nodesByName = new Map((workflow.nodes || []).map((item) => [item.name, item]));
+  const names = new Set(nodesByName.keys());
   if (!workflow.name || !workflow.nodes?.length) errors.push(`${file}: missing name or nodes`);
   for (const [source, outputs] of Object.entries(workflow.connections || {})) {
     if (!names.has(source)) errors.push(`${file}: connection source ${source} does not exist`);
-    for (const branch of outputs.main || []) for (const target of branch || []) if (!names.has(target.node)) errors.push(`${file}: connection target ${target.node} does not exist`);
+    const sourceNode = nodesByName.get(source);
+    const mainOutputs = outputs.main || [];
+    if (sourceNode?.type === 'n8n-nodes-base.switch') {
+      const outputCount = sourceNode.parameters?.rules?.rules?.length || 0;
+      mainOutputs.forEach((branch, index) => {
+        if (branch?.length && index >= outputCount) errors.push(`${file}/${source}: connection uses unsupported switch output ${index}; max is ${outputCount - 1}`);
+      });
+    }
+    for (const branch of mainOutputs) for (const target of branch || []) if (!names.has(target.node)) errors.push(`${file}: connection target ${target.node} does not exist`);
   }
   const text = JSON.stringify(workflow);
   for (const forbidden of [
@@ -33,6 +42,13 @@ for (const file of files) {
     if (workflowNode.type === 'n8n-nodes-base.postgres') {
       if (!workflowNode.parameters.query.includes('$')) errors.push(`${file}/${workflowNode.name}: SQL must use positional parameters`);
       if (!workflowNode.parameters.options?.queryReplacement) errors.push(`${file}/${workflowNode.name}: missing query replacements`);
+    }
+    if (workflowNode.type === 'n8n-nodes-base.switch') {
+      const outputCount = workflowNode.parameters?.rules?.rules?.length || 0;
+      const fallbackOutput = workflowNode.parameters?.fallbackOutput;
+      if (!Number.isInteger(fallbackOutput) || fallbackOutput < 0 || fallbackOutput >= outputCount) {
+        errors.push(`${file}/${workflowNode.name}: fallbackOutput ${fallbackOutput} must be between 0 and ${outputCount - 1}`);
+      }
     }
     if (workflowNode.type === 'n8n-nodes-base.httpRequest') {
       const headers = workflowNode.parameters.headerParameters?.parameters || [];
