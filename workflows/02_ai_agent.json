@@ -94,6 +94,8 @@
       "parameters": {
         "name": "Consultar_Poltronas",
         "description": "Busca horários, opções de viagens e os preços das poltronas. Requer informar a origem e o destino.",
+        "specifyInputSchema": true,
+        "jsonSchema": "{\n  \"type\": \"object\",\n  \"properties\": {\n    \"origin\": {\n      \"type\": \"string\",\n      \"description\": \"A cidade de origem\"\n    },\n    \"destination\": {\n      \"type\": \"string\",\n      \"description\": \"A cidade de destino\"\n    }\n  },\n  \"required\": [\"origin\", \"destination\"]\n}",
         "method": "GET",
         "url": "http://mock-api:8090/api/routes/available_seats/",
         "sendQuery": true,
@@ -101,11 +103,11 @@
           "parameters": [
             {
               "name": "origin",
-              "value": "={{ $fromAI('origin', 'A cidade de origem', 'string') }}"
+              "value": "={{ $json.origin }}"
             },
             {
               "name": "destination",
-              "value": "={{ $fromAI('destination', 'A cidade de destino', 'string') }}"
+              "value": "={{ $json.destination }}"
             }
           ]
         }
@@ -123,6 +125,8 @@
       "parameters": {
         "name": "Gerar_Pagamento",
         "description": "Gera um pedido e retorna o link de pagamento do Asaas. Requer origem, destino, data da viagem (travel_date), cpf do passageiro e nome.",
+        "specifyInputSchema": true,
+        "jsonSchema": "{\n  \"type\": \"object\",\n  \"properties\": {\n    \"origin\": {\n      \"type\": \"string\",\n      \"description\": \"Cidade de origem\"\n    },\n    \"destination\": {\n      \"type\": \"string\",\n      \"description\": \"Cidade de destino\"\n    },\n    \"travel_date\": {\n      \"type\": \"string\",\n      \"description\": \"Data da viagem no formato DD/MM/AAAA\"\n    },\n    \"passenger_cpf\": {\n      \"type\": \"string\",\n      \"description\": \"CPF do passageiro\"\n    },\n    \"passenger_name\": {\n      \"type\": \"string\",\n      \"description\": \"Nome completo do passageiro\"\n    }\n  },\n  \"required\": [\"origin\", \"destination\", \"travel_date\", \"passenger_cpf\", \"passenger_name\"]\n}",
         "method": "POST",
         "url": "http://mock-api:8090/api/orders/create",
         "sendBody": true,
@@ -130,23 +134,23 @@
           "parameters": [
             {
               "name": "origin",
-              "value": "={{ $fromAI('origin', 'Cidade de origem', 'string') }}"
+              "value": "={{ $json.origin }}"
             },
             {
               "name": "destination",
-              "value": "={{ $fromAI('destination', 'Cidade de destino', 'string') }}"
+              "value": "={{ $json.destination }}"
             },
             {
               "name": "travel_date",
-              "value": "={{ $fromAI('travel_date', 'Data da viagem no formato DD/MM/AAAA', 'string') }}"
+              "value": "={{ $json.travel_date }}"
             },
             {
               "name": "passenger_cpf",
-              "value": "={{ $fromAI('passenger_cpf', 'CPF do passageiro', 'string') }}"
+              "value": "={{ $json.passenger_cpf }}"
             },
             {
               "name": "passenger_name",
-              "value": "={{ $fromAI('passenger_name', 'Nome completo do passageiro', 'string') }}"
+              "value": "={{ $json.passenger_name }}"
             },
             {
               "name": "session_id",
