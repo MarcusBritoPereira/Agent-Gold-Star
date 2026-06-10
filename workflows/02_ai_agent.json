@@ -301,7 +301,18 @@
         ]
       ]
     },
-    "Consultar_Poltronas": {
+    "Buscar_Rotas": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Consultar_Assentos": {
       "ai_tool": [
         [
           {
