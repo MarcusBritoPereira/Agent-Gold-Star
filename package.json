@@ -12,7 +12,8 @@
     "deploy": "node deploy_to_n8n.js",
     "activate": "node activate_workflows.js",
     "cleanup": "node cleanup_n8n.js",
-    "inject:credentials": "node inject_credentials.js"
+    "inject:credentials": "node inject_credentials.js",
+    "setup:live": "node scripts/setup-live.js"
   },
   "engines": {
     "node": ">=20"
