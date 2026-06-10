@@ -19,7 +19,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const root = $json.body ?? $json;\nconst data = root.data ?? {};\nconst key = data.key ?? {};\n// Na Evolution, root.sender costuma ser o número da instância.\n// O cliente real vem em data.key.remoteJid quando fromMe=false.\nconst sender = key.remoteJid ?? root.sender ?? '';\nconst phone = String(sender).split('@')[0].replace(/\\D/g, '');\nconst eventId = String(key.id ?? root.event_id ?? '');\nconst messageType = data.messageType ?? 'conversation';\nconst message = data.message?.conversation ?? data.message?.extendedTextMessage?.text ?? data.text ?? '';\nif (!phone || !eventId || key.fromMe === true) return [];\nreturn [{ json: { event_id: eventId, phone_number: phone, full_name: String(data.pushName ?? 'Cliente').slice(0, 200), message: String(message).trim().slice(0, 4000), message_type: messageType, raw_payload: root } }];"
+        "jsCode": "const root = $json.body ?? $json;\nconst data = root.data ?? {};\nconst key = data.key ?? {};\nconst sender = root.sender ?? key.remoteJid ?? '';\nconst phone = String(sender).split('@')[0].replace(/\\D/g, '');\nconst eventId = String(key.id ?? root.event_id ?? '');\nconst messageType = data.messageType ?? 'conversation';\nconst message = data.message?.conversation ?? data.message?.extendedTextMessage?.text ?? data.text ?? '';\nif (!phone || !eventId || key.fromMe === true) return [];\nreturn [{ json: { event_id: eventId, phone_number: phone, full_name: String(data.pushName ?? 'Cliente').slice(0, 200), message: String(message).trim().slice(0, 4000), message_type: messageType, raw_payload: root } }];"
       },
       "id": "gold-star-0002",
       "name": "Normalize and Validate Event",
@@ -133,7 +133,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "http://n8n:5678/webhook/intent-detection",
+        "url": "={{ $env.INTERNAL_N8N_WEBHOOK_URL + '/webhook/intent-detection' }}",
         "options": {
           "timeout": 15000,
           "response": {
@@ -229,8 +229,8 @@
   "settings": {
     "executionOrder": "v1",
     "saveDataErrorExecution": "all",
-    "saveDataSuccessExecution": "all",
-    "saveManualExecutions": true
+    "saveDataSuccessExecution": "none",
+    "saveManualExecutions": false
   },
   "staticData": null,
   "tags": [],

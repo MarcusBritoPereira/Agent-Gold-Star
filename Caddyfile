@@ -1,0 +1,7 @@
+http://n8n.lanchasgoldstar.com.br {
+    reverse_proxy localhost:5678
+}
+
+http://evolution.lanchasgoldstar.com.br {
+    reverse_proxy localhost:8088
+}

@@ -85,7 +85,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const trigger = $('Intent Webhook').item.json.body;\nlet parsed;\ntry { parsed = JSON.parse($json.choices?.[0]?.message?.content ?? '{}'); } catch { parsed = {}; }\nconst message = String(trigger.message ?? '');\nconst forcedIntent = ['CONFIRMING_ORDER','CREATING_PAYMENT'].includes(String(trigger.current_state ?? '')) && /(confirmo|confirmar|pode seguir|sim|fechar|finalizar)/i.test(message)\n  ? 'BUY_TICKET'\n  : (parsed.intent ?? 'OTHER');\nreturn [{ json: { ...trigger, intent: forcedIntent, confidence: Number(parsed.confidence ?? 0), entities: parsed.entities ?? {} } }];"
+        "jsCode": "const trigger = $('Intent Webhook').item.json.body;\nlet parsed;\ntry { parsed = JSON.parse($json.choices?.[0]?.message?.content ?? '{}'); } catch { parsed = {}; }\nreturn [{ json: { ...trigger, intent: parsed.intent ?? 'OTHER', confidence: Number(parsed.confidence ?? 0), entities: parsed.entities ?? {} } }];"
       },
       "id": "gold-star-0014",
       "name": "Parse OpenAI Result",
@@ -98,7 +98,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const input = $json.body;\nconst text = String(input.message ?? '').toLowerCase();\n\nlet intent = 'OTHER';\nif (/compr|passagem|viajar|bilhete/.test(text)) intent = 'BUY_TICKET';\nif (['CONFIRMING_ORDER','CREATING_PAYMENT'].includes(String(input.current_state ?? '')) && /(confirmo|confirmar|pode seguir|sim|fechar|finalizar)/i.test(text)) {\n  intent = 'BUY_TICKET';\n}\nelse if (/hor[aá]rio|sa[ií]da|barco/.test(text)) intent = 'ASK_SCHEDULES';\nelse if (/pre[cç]o|valor|quanto custa/.test(text)) intent = 'ASK_PRICES';\nelse if (/atendente|humano|ajuda/.test(text)) intent = 'HUMAN_HELP';\n\nconst route = text.match(/(?:de)\\s+([a-záàâãéèêíïóôõöúç ]+?)\\s+(?:para|até)\\s+([a-záàâãéèêíïóôõöúç ]+?)(?=\\s+(?:amanhã|amanha|hoje|dia|em|\\d{1,2}[\\/-]\\d{1,2})|$)/i);\n\nconst cpf = text.match(/\\b(\\d{3}\\.?\\d{3}\\.?\\d{3}-?\\d{2})\\b/);\n\n// Remove CPF do texto antes de procurar data, para não confundir CPF com data\nconst textWithoutCpf = cpf ? text.replace(cpf[0], '') : text;\n\nconst date = textWithoutCpf.match(/\\b(\\d{1,2})[\\/-](\\d{1,2})(?:[\\/-](\\d{2,4}))?\\b/);\nconst name = text.match(/(?:meu nome (?:é|e)|passageiro(?:a)?|nome)\\s*[:,-]?\\s*([a-záàâãéèêíïóôõöúç ]{3,80})/i);\n\nconst entities = {};\n\nif (route) {\n  entities.origin = route[1].trim();\n  entities.destination = route[2].trim();\n}\n\nif (date) {\n  const day = String(date[1]).padStart(2, '0');\n  const month = String(date[2]).padStart(2, '0');\n  const year = date[3] ? Number(date[3].length === 2 ? '20' + date[3] : date[3]) : new Date().getUTCFullYear();\n\n  const dayNumber = Number(day);\n  const monthNumber = Number(month);\n\n  if (dayNumber >= 1 && dayNumber <= 31 && monthNumber >= 1 && monthNumber <= 12) {\n    entities.travel_date = [year, month, day].join('-');\n  }\n} else if (/\\bamanh[ãa]\\b/.test(text)) {\n  const d = new Date();\n  d.setUTCDate(d.getUTCDate() + 1);\n  entities.travel_date = d.toISOString().slice(0, 10);\n} else if (/\\bhoje\\b/.test(text)) {\n  entities.travel_date = new Date().toISOString().slice(0, 10);\n}\n\nif (cpf) entities.passenger_cpf = cpf[1];\n\nif (name) {\n  entities.passenger_name = name[1].replace(/\\s+(?:cpf|documento).*$/i, '').trim();\n}\n\nreturn [{ json: { ...input, intent, confidence: 1, entities } }];"
+        "jsCode": "const input = $json.body;\nconst text = String(input.message ?? '').toLowerCase();\nlet intent = 'OTHER';\nif (/compr|passagem|viajar|bilhete/.test(text)) intent = 'BUY_TICKET';\nelse if (/hor[aá]rio|sa[ií]da|barco/.test(text)) intent = 'ASK_SCHEDULES';\nelse if (/pre[cç]o|valor|quanto custa/.test(text)) intent = 'ASK_PRICES';\nelse if (/atendente|humano|ajuda/.test(text)) intent = 'HUMAN_HELP';\nconst route = text.match(/(?:de)\\s+([a-záàâãéèêíïóôõöúç ]+?)\\s+(?:para|até)\\s+([a-záàâãéèêíïóôõöúç ]+?)(?:\\s+(?:dia|em|$))/i);\nconst date = text.match(/(\\d{2})[\\/-](\\d{2})(?:[\\/-](\\d{2,4}))?/);\nconst cpf = text.match(/\\b(\\d{3}\\.?\\d{3}\\.?\\d{3}-?\\d{2})\\b/);\nconst name = text.match(/(?:meu nome (?:é|e)|passageiro(?:a)?|nome)\\s*[:,-]?\\s*([a-záàâãéèêíïóôõöúç ]{3,80})/i);\nconst entities = {};\nif (route) { entities.origin = route[1].trim(); entities.destination = route[2].trim(); }\nif (date) { const year = date[3] ? Number(date[3].length === 2 ? '20' + date[3] : date[3]) : new Date().getUTCFullYear(); entities.travel_date = [year, date[2], date[1]].join('-'); }\nif (cpf) entities.passenger_cpf = cpf[1];\nif (name) entities.passenger_name = name[1].replace(/\\s+(?:cpf|documento).*$/i, '').trim();\nreturn [{ json: { ...input, intent, confidence: 1, entities } }];"
       },
       "id": "gold-star-0015",
       "name": "Mock Intent Classifier",
@@ -125,9 +125,9 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "UPDATE conversational_sessions\nSET intent = CASE\n      WHEN current_state IN ('CONFIRMING_ORDER','CREATING_PAYMENT')\n        AND lower($4) ~ '(confirmo|confirmar|pode seguir|sim|fechar|finalizar)'\n        THEN 'BUY_TICKET'\n      ELSE $2\n    END,\n    state_payload =\n      state_payload\n      || $3::jsonb\n      || jsonb_strip_nulls(jsonb_build_object(\n        'origin',\n          COALESCE(\n            $3::jsonb->>'origin',\n            (regexp_match(lower($4), 'origem\\s+([^,.;]+)'))[1],\n            (regexp_match(lower($4), 'de\\s+([^,.;]+)\\s+para'))[1]\n          ),\n        'destination',\n          COALESCE(\n            $3::jsonb->>'destination',\n            (regexp_match(lower($4), 'destino\\s+([^,.;]+)'))[1],\n            (regexp_match(lower($4), 'para\\s+([^,.;]+)'))[1]\n          )\n      )),\n    current_state = CASE\n      WHEN $2 = 'HUMAN_HELP'\n        THEN 'HUMAN_HANDOFF'::conversation_state\n\n      WHEN current_state = 'CONFIRMING_ORDER'\n        AND lower($4) ~ '(confirmo|confirmar|pode seguir|sim|fechar|finalizar)'\n        THEN 'CREATING_PAYMENT'::conversation_state\n\n      WHEN $2 = 'BUY_TICKET'\n        AND ((state_payload || $3::jsonb) ? 'origin')\n        AND ((state_payload || $3::jsonb) ? 'destination')\n        AND ((state_payload || $3::jsonb) ? 'travel_date')\n        AND ((state_payload || $3::jsonb) ? 'passenger_name')\n        AND ((state_payload || $3::jsonb) ? 'passenger_cpf')\n        THEN 'CONFIRMING_ORDER'::conversation_state\n\n      WHEN $2 = 'BUY_TICKET'\n        AND NOT (((state_payload || $3::jsonb) ? 'origin')\n          AND ((state_payload || $3::jsonb) ? 'destination')\n          AND ((state_payload || $3::jsonb) ? 'travel_date'))\n        THEN 'COLLECTING_TRIP'::conversation_state\n\n      WHEN $2 = 'BUY_TICKET'\n        AND NOT (((state_payload || $3::jsonb) ? 'passenger_name')\n          AND ((state_payload || $3::jsonb) ? 'passenger_cpf'))\n        THEN 'COLLECTING_PASSENGER'::conversation_state\n\n      ELSE current_state\n    END,\n    expires_at = now() + interval '30 minutes'\nWHERE id = $1\nRETURNING *;",
+        "query": "UPDATE conversational_sessions\nSET intent = $2,\n    current_state = CASE WHEN $2 = 'BUY_TICKET' THEN 'COLLECTING_TRIP'::conversation_state WHEN $2 = 'HUMAN_HELP' THEN 'HUMAN_HANDOFF'::conversation_state ELSE current_state END,\n    state_payload = state_payload || $3::jsonb,\n    expires_at = now() + interval '30 minutes'\nWHERE id = $1\nRETURNING *;",
         "options": {
-          "queryReplacement": "={{ [$json.session_id, $json.intent, JSON.stringify($json.entities), $json.message || $json.body?.message || ''] }}"
+          "queryReplacement": "={{ [$json.session_id, $json.intent, JSON.stringify($json.entities)] }}"
         }
       },
       "id": "gold-star-0017",
@@ -148,7 +148,7 @@
     {
       "parameters": {
         "dataType": "string",
-        "value1": "={{ ['CONFIRMING_ORDER','CREATING_PAYMENT'].includes($json.current_state) ? 'BUY_TICKET' : ($json.intent || $('Validate Classification').item.json.intent) }}",
+        "value1": "={{ $('Validate Classification').item.json.intent }}",
         "rules": {
           "rules": [
             {
@@ -179,7 +179,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "http://n8n:5678/webhook/sales-flow",
+        "url": "={{ $env.INTERNAL_N8N_WEBHOOK_URL + '/webhook/sales-flow' }}",
         "options": {
           "timeout": 15000,
           "response": {
@@ -205,7 +205,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "http://n8n:5678/webhook/operational-query",
+        "url": "={{ $env.INTERNAL_N8N_WEBHOOK_URL + '/webhook/operational-query' }}",
         "options": {
           "timeout": 15000,
           "response": {
@@ -231,7 +231,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "http://host.docker.internal:8088/message/sendText/goldstar",
+        "url": "={{ $env.EVOLUTION_API_URL + '/message/sendText/' + $env.EVOLUTION_INSTANCE }}",
         "options": {
           "timeout": 15000,
           "response": {
@@ -245,7 +245,7 @@
           "parameters": [
             {
               "name": "apikey",
-              "value": "gold_star_api_key_123"
+              "value": "={{ $env.EVOLUTION_API_KEY }}"
             }
           ]
         },
@@ -266,7 +266,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "http://host.docker.internal:8088/message/sendText/goldstar",
+        "url": "={{ $env.EVOLUTION_API_URL + '/message/sendText/' + $env.EVOLUTION_INSTANCE }}",
         "options": {
           "timeout": 15000,
           "response": {
@@ -280,7 +280,7 @@
           "parameters": [
             {
               "name": "apikey",
-              "value": "gold_star_api_key_123"
+              "value": "={{ $env.EVOLUTION_API_KEY }}"
             }
           ]
         },
@@ -428,8 +428,8 @@
   "settings": {
     "executionOrder": "v1",
     "saveDataErrorExecution": "all",
-    "saveDataSuccessExecution": "all",
-    "saveManualExecutions": true
+    "saveDataSuccessExecution": "none",
+    "saveManualExecutions": false
   },
   "staticData": null,
   "tags": [],

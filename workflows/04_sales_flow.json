@@ -42,7 +42,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const payload = $json.state_payload ?? {};\nif (!payload.passenger_name && $json.full_name && $json.full_name !== 'Cliente') payload.passenger_name = $json.full_name;\nif (!payload.passenger_cpf && $json.cpf) payload.passenger_cpf = $json.cpf;\nconst labels = { origin: 'origem', destination: 'destino', travel_date: 'data da viagem', passenger_name: 'nome do passageiro', passenger_cpf: 'CPF do passageiro' };\nconst missing = Object.keys(labels).filter((key) => !payload[key]);\nconst forceComplete = String($json.current_state ?? '') === 'CREATING_PAYMENT';\nreturn [{\n  json: {\n    session_id: $json.id,\n    phone_number: $json.phone_number,\n    payload,\n    complete: forceComplete || missing.length === 0,\n    missing,\n    prompt: missing.length ? 'Para continuar, informe: ' + missing.map((k) => labels[k]).join(', ') + '.' : ''\n  }\n}];"
+        "jsCode": "const payload = $json.state_payload ?? {};\nif (!payload.passenger_name && $json.full_name && $json.full_name !== 'Cliente') payload.passenger_name = $json.full_name;\nif (!payload.passenger_cpf && $json.cpf) payload.passenger_cpf = $json.cpf;\nconst labels = { origin: 'origem', destination: 'destino', travel_date: 'data da viagem', passenger_name: 'nome do passageiro', passenger_cpf: 'CPF do passageiro' };\nconst missing = Object.keys(labels).filter((key) => !payload[key]);\nreturn [{ json: { session_id: $json.id, phone_number: $json.phone_number, payload, complete: missing.length === 0, missing, prompt: missing.length ? 'Para continuar, informe: ' + missing.map((k) => labels[k]).join(', ') + '.' : '' } }];"
       },
       "id": "gold-star-0032",
       "name": "Evaluate Required Data",
@@ -87,7 +87,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "UPDATE conversational_sessions\nSET current_state = CASE\n    WHEN NOT ($2::jsonb ? 'origin') OR NOT ($2::jsonb ? 'destination') OR NOT ($2::jsonb ? 'travel_date')\n      THEN 'COLLECTING_TRIP'::conversation_state\n    WHEN NOT ($2::jsonb ? 'passenger_name') OR NOT ($2::jsonb ? 'passenger_cpf')\n      THEN 'COLLECTING_PASSENGER'::conversation_state\n    ELSE current_state\n  END,\n  state_payload = $2::jsonb\nWHERE id=$1\nRETURNING *;",
+        "query": "UPDATE conversational_sessions SET current_state='COLLECTING_PASSENGER', state_payload=$2::jsonb WHERE id=$1 RETURNING *;",
         "options": {
           "queryReplacement": "={{ [$json.session_id, JSON.stringify($json.payload)] }}"
         }
@@ -110,7 +110,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "http://host.docker.internal:8088/message/sendText/goldstar",
+        "url": "={{ $env.EVOLUTION_API_URL + '/message/sendText/' + $env.EVOLUTION_INSTANCE }}",
         "options": {
           "timeout": 15000,
           "response": {
@@ -124,7 +124,7 @@
           "parameters": [
             {
               "name": "apikey",
-              "value": "gold_star_api_key_123"
+              "value": "={{ $env.EVOLUTION_API_KEY }}"
             }
           ]
         },
@@ -145,7 +145,7 @@
     {
       "parameters": {
         "method": "GET",
-        "url": "http://mock-api:8090/api/routes/available_seats/",
+        "url": "={{ $env.BACKEND_BASE_URL + '/api/routes/available_seats/' }}",
         "options": {
           "timeout": 15000,
           "response": {
@@ -154,7 +154,23 @@
             }
           }
         },
-        "sendQuery": false
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "origin",
+              "value": "={{ $json.payload.origin }}"
+            },
+            {
+              "name": "destination",
+              "value": "={{ $json.payload.destination }}"
+            },
+            {
+              "name": "date",
+              "value": "={{ $json.payload.travel_date }}"
+            }
+          ]
+        }
       },
       "id": "gold-star-0037",
       "name": "Check Availability",
@@ -167,7 +183,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const request = $('Evaluate Required Data').item.json;\n\nlet trip = $json.trip ?? $json.trips?.[0] ?? $json;\n\nif ((!trip || !trip.id) && Array.isArray($json.trips) && $json.trips.length > 0) {\n  trip = $json.trips[0];\n}\n\nconst seats = trip.available_seat_numbers\n  ?? trip.seats?.filter((s) => s.status === 'AVAILABLE').map((s) => s.seat_number ?? s.number)\n  ?? [];\n\nconst seat = request.payload.seat_number ?? seats[0] ?? trip.available_seat;\n\nconst available = Boolean(\n  trip.id &&\n  seat &&\n  Number(trip.available_seats ?? seats.length ?? 0) > 0\n);\n\nreturn [{\n  json: {\n    ...request,\n    available,\n    trip_id: trip.id,\n    route_id: trip.route_id,\n    available_seat: seat,\n    price_cents: trip.price_cents ?? Math.round(Number(trip.price ?? 0) * 100)\n  }\n}];"
+        "jsCode": "const request = $('Evaluate Required Data').item.json;\nconst trip = $json.trip ?? $json.trips?.[0] ?? $json;\nconst seats = trip.available_seat_numbers ?? trip.seats?.filter((s) => s.status === 'AVAILABLE').map((s) => s.seat_number ?? s.number) ?? [];\nconst seat = request.payload.seat_number ?? seats[0] ?? trip.available_seat;\nconst available = Boolean(trip.id && seat && (trip.available_seats ?? seats.length ?? 0) > 0);\nreturn [{ json: { ...request, available, trip_id: trip.id, route_id: trip.route_id, available_seat: seat, price_cents: trip.price_cents ?? Math.round(Number(trip.price ?? 0) * 100) } }];"
       },
       "id": "gold-star-0038",
       "name": "Select Available Trip and Seat",
@@ -235,7 +251,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "http://n8n:5678/webhook/create-payment",
+        "url": "={{ $env.INTERNAL_N8N_WEBHOOK_URL + '/webhook/create-payment' }}",
         "options": {
           "timeout": 15000,
           "response": {
@@ -247,7 +263,7 @@
         "sendBody": true,
         "contentType": "raw",
         "rawContentType": "application/json",
-        "body": "={{ JSON.stringify({ session_id: $json.session_id || $json.id || $('Evaluate Required Data').item.json.session_id }) }}"
+        "body": "={{ JSON.stringify({ session_id: $json.id }) }}"
       },
       "id": "gold-star-0042",
       "name": "Call Payment Workflow",
@@ -261,7 +277,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "http://host.docker.internal:8088/message/sendText/goldstar",
+        "url": "={{ $env.EVOLUTION_API_URL + '/message/sendText/' + $env.EVOLUTION_INSTANCE }}",
         "options": {
           "timeout": 15000,
           "response": {
@@ -275,7 +291,7 @@
           "parameters": [
             {
               "name": "apikey",
-              "value": "gold_star_api_key_123"
+              "value": "={{ $env.EVOLUTION_API_KEY }}"
             }
           ]
         },
@@ -413,8 +429,8 @@
   "settings": {
     "executionOrder": "v1",
     "saveDataErrorExecution": "all",
-    "saveDataSuccessExecution": "all",
-    "saveManualExecutions": true
+    "saveDataSuccessExecution": "none",
+    "saveManualExecutions": false
   },
   "staticData": null,
   "tags": [],

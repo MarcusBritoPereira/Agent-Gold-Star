@@ -30,22 +30,20 @@ services:
     environment:
       N8N_HOST: ${N8N_HOST:-localhost}
       N8N_PORT: 5678
-      N8N_PROTOCOL: https
-      N8N_EDITOR_BASE_URL: https://n8n.lanchasgoldstar.com.br/
-      WEBHOOK_URL: https://n8n.lanchasgoldstar.com.br/
+      N8N_PROTOCOL: ${N8N_PROTOCOL:-http}
+      WEBHOOK_URL: ${N8N_WEBHOOK_URL:-http://localhost:5678}
       N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY:?configure N8N_ENCRYPTION_KEY in .env}
       N8N_DIAGNOSTICS_ENABLED: "false"
       N8N_PERSONALIZATION_ENABLED: "false"
       N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS: "true"
       N8N_BLOCK_ENV_ACCESS_IN_NODE: "false"
-      N8N_SECURE_COOKIE: "false"
       DB_TYPE: postgresdb
       DB_POSTGRESDB_HOST: postgres
       DB_POSTGRESDB_PORT: 5432
       DB_POSTGRESDB_DATABASE: ${POSTGRES_DB:-gold_star}
       DB_POSTGRESDB_USER: ${POSTGRES_USER:-gold_star}
       DB_POSTGRESDB_PASSWORD: ${POSTGRES_PASSWORD}
-      INTERNAL_N8N_WEBHOOK_URL: http://n8n:5678
+      INTERNAL_N8N_WEBHOOK_URL: ${INTERNAL_N8N_WEBHOOK_URL:-http://n8n:5678}
       BACKEND_BASE_URL: ${BACKEND_BASE_URL:-http://mock-api:8090}
       BACKEND_MODE: ${BACKEND_MODE:-mock}
       PUBLIC_BACKEND_URL: ${PUBLIC_BACKEND_URL:-http://localhost:8090}
@@ -56,7 +54,7 @@ services:
       EVOLUTION_API_KEY: ${EVOLUTION_API_KEY:-change-me}
       EVOLUTION_INSTANCE: ${EVOLUTION_INSTANCE:-goldstar}
       ASAAS_WEBHOOK_TOKEN: ${ASAAS_WEBHOOK_TOKEN:?configure ASAAS_WEBHOOK_TOKEN in .env}
-      ALERT_WEBHOOK_URL: http://mock-api:8090/alerts
+      ALERT_WEBHOOK_URL: ${ALERT_WEBHOOK_URL:-http://mock-api:8090/alerts}
     ports:
       - "${N8N_PORT:-5678}:5678"
     volumes:
@@ -82,19 +80,11 @@ services:
 
   evolution-api:
     profiles: ["live-whatsapp"]
-    image: ${EVOLUTION_IMAGE:-atendai/evolution-api:v2.2.3}
+    image: ${EVOLUTION_IMAGE:-atendai/evolution-api:latest}
     restart: unless-stopped
-    depends_on:
-      postgres:
-        condition: service_healthy
     environment:
       AUTHENTICATION_API_KEY: ${EVOLUTION_API_KEY:?configure EVOLUTION_API_KEY in .env}
       SERVER_URL: http://localhost:${EVOLUTION_PORT:-8088}
-      DATABASE_ENABLED: "true"
-      DATABASE_PROVIDER: "postgresql"
-      DATABASE_CONNECTION_URI: postgresql://evolution:${EVOLUTION_DB_PASSWORD}@postgres:5432/evolution?schema=public
-      CACHE_REDIS_ENABLED: "false"
-      CACHE_LOCAL_ENABLED: "true"
     ports:
       - "${EVOLUTION_PORT:-8088}:8080"
     volumes:
