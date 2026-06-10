@@ -7,9 +7,12 @@ async function main() {
       for (const exec of executions.data) {
         if (exec.status === 'error') {
           const fullExec = await request(`/executions/${exec.id}`);
-          console.log(`Execution ${exec.id} Error:`);
-          const str = JSON.stringify(fullExec, null, 2);
-          console.log(str ? str.substring(0, 5000) : 'Undefined execution data');
+          const data = fullExec.data;
+          if (data && data.data && data.data.resultData) {
+            console.log(JSON.stringify(data.data.resultData.error, null, 2));
+          } else {
+            console.log("Keys: ", Object.keys(data || {}));
+          }
         }
       }
     } else {
