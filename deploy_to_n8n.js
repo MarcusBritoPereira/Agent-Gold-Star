@@ -1,15 +1,9 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { client, deployableWorkflow } = require('./scripts/lib/n8n');
-const { createGeminiCredential } = require('./scripts/create-credential');
 
 async function main() {
   const { config, request } = client();
-  
-  const geminiCredId = await createGeminiCredential();
-  if (geminiCredId) {
-    process.env.GEMINI_CREDENTIAL_ID = geminiCredId;
-  }
   const directory = path.join(__dirname, 'workflows');
   const files = fs.readdirSync(directory).filter((file) => /^\d{2}_.+\.json$/.test(file)).sort();
   const listed = await request('/workflows?limit=250');

@@ -23,9 +23,6 @@ function deployableWorkflow(workflow, config) {
   delete copy.active;
   delete copy.id;
   delete copy.versionId;
-  delete copy.triggerCount;
-  delete copy.tags;
-  delete copy.pinData;
   for (const workflowNode of copy.nodes || []) {
     if (workflowNode.credentials?.postgres) {
       const credential = workflowNode.credentials.postgres;
@@ -33,14 +30,8 @@ function deployableWorkflow(workflow, config) {
       credential.id = config.credentialId;
       credential.name = config.credentialName;
     }
-    if (workflowNode.credentials?.geminiApi || workflowNode.credentials?.googlePalmApi) {
-      workflowNode.credentials = {
-        googlePalmApi: {
-          id: process.env.GEMINI_CREDENTIAL_ID,
-          name: "Gold Star Gemini API"
-        }
-      };
-    }
+    delete workflowNode.credentials?.geminiApi;
+    delete workflowNode.credentials?.googlePalmApi;
   }
   return copy;
 }
