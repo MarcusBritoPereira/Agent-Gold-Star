@@ -9,3 +9,5 @@ caddy_data/
 caddy_config/
 *.db
 /tmp/
+.env.*
+!.env.example
