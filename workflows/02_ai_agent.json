@@ -94,19 +94,20 @@
       "parameters": {
         "name": "Buscar_Rotas",
         "description": "Busca rotas disponíveis a partir de uma cidade de origem. Retorna os route_id, destinos, horários e preços (speed_boat_price).",
-        "specifyInputSchema": true,
-        "jsonSchema": "{\n  \"type\": \"object\",\n  \"properties\": {\n    \"origin\": {\n      \"type\": \"string\",\n      \"description\": \"A cidade de origem\"\n    }\n  },\n  \"required\": [\"origin\"]\n}",
+        "placeholderDefinitions": {
+          "values": [
+            {
+              "name": "origin",
+              "description": "A cidade de origem",
+              "type": "string"
+            }
+          ]
+        },
         "method": "GET",
         "url": "https://embarcar-e83ea296df06.herokuapp.com/api/routes/show/",
         "sendQuery": true,
-        "queryParameters": {
-          "parameters": [
-            {
-              "name": "q[origin_cont]",
-              "value": "={{ $json.origin }}"
-            }
-          ]
-        }
+        "specifyQuery": "json",
+        "jsonQuery": "{\n  \"q[origin_cont]\": \"{origin}\"\n}"
       },
       "id": "gold-star-agent-tool-buscar-rotas",
       "name": "Buscar_Rotas",
@@ -121,27 +122,25 @@
       "parameters": {
         "name": "Consultar_Assentos",
         "description": "Verifica a disponibilidade de assentos para uma rota e data. Retorna o trip_id e a quantidade de vagas.",
-        "specifyInputSchema": true,
-        "jsonSchema": "{\n  \"type\": \"object\",\n  \"properties\": {\n    \"route_id\": {\n      \"type\": \"integer\",\n      \"description\": \"O ID da rota (route_id) escolhida\"\n    },\n    \"date\": {\n      \"type\": \"string\",\n      \"description\": \"Data da viagem no formato YYYY-MM-DD\"\n    }\n  },\n  \"required\": [\"route_id\", \"date\"]\n}",
-        "method": "GET",
-        "url": "https://embarcar-e83ea296df06.herokuapp.com/api/routes/available_seats/",
-        "sendQuery": true,
-        "queryParameters": {
-          "parameters": [
-            {
-              "name": "web",
-              "value": "true"
-            },
+        "placeholderDefinitions": {
+          "values": [
             {
               "name": "route_id",
-              "value": "={{ $json.route_id }}"
+              "description": "O ID da rota (route_id) escolhida",
+              "type": "number"
             },
             {
               "name": "date",
-              "value": "={{ $json.date }}"
+              "description": "Data da viagem no formato YYYY-MM-DD",
+              "type": "string"
             }
           ]
-        }
+        },
+        "method": "GET",
+        "url": "https://embarcar-e83ea296df06.herokuapp.com/api/routes/available_seats/",
+        "sendQuery": true,
+        "specifyQuery": "json",
+        "jsonQuery": "{\n  \"web\": \"true\",\n  \"route_id\": {route_id},\n  \"date\": \"{date}\"\n}"
       },
       "id": "gold-star-agent-tool-consultar",
       "name": "Consultar_Assentos",
@@ -156,60 +155,50 @@
       "parameters": {
         "name": "Gerar_Pagamento",
         "description": "Gera a ordem de pagamento. Requer route_id, trip_id, date, price, passenger_cpf, passenger_name, passenger_birthday.",
-        "specifyInputSchema": true,
-        "jsonSchema": "{\n  \"type\": \"object\",\n  \"properties\": {\n    \"route_id\": {\n      \"type\": \"integer\",\n      \"description\": \"ID da Rota\"\n    },\n    \"trip_id\": {\n      \"type\": \"integer\",\n      \"description\": \"ID da Viagem\"\n    },\n    \"date\": {\n      \"type\": \"string\",\n      \"description\": \"Data no formato YYYY-MM-DD\"\n    },\n    \"price\": {\n      \"type\": \"number\",\n      \"description\": \"Preço da passagem (speed_boat_price)\"\n    },\n    \"passenger_cpf\": {\n      \"type\": \"string\",\n      \"description\": \"CPF\"\n    },\n    \"passenger_name\": {\n      \"type\": \"string\",\n      \"description\": \"Nome completo\"\n    },\n    \"passenger_birthday\": {\n      \"type\": \"string\",\n      \"description\": \"Data de nascimento no formato YYYY-MM-DD\"\n    }\n  },\n  \"required\": [\"route_id\", \"trip_id\", \"date\", \"price\", \"passenger_cpf\", \"passenger_name\", \"passenger_birthday\"]\n}",
-        "method": "POST",
-        "url": "https://embarcar-e83ea296df06.herokuapp.com/api/orders/create",
-        "sendBody": true,
-        "contentType": "json",
-        "bodyParameters": {
-          "parameters": [
+        "placeholderDefinitions": {
+          "values": [
             {
               "name": "route_id",
-              "value": "={{ $json.route_id }}"
+              "description": "ID da Rota",
+              "type": "number"
             },
             {
               "name": "trip_id",
-              "value": "={{ $json.trip_id }}"
+              "description": "ID da Viagem",
+              "type": "number"
             },
             {
               "name": "date",
-              "value": "={{ $json.date }}"
+              "description": "Data no formato YYYY-MM-DD",
+              "type": "string"
             },
             {
-              "name": "payment_method",
-              "value": "PIX"
+              "name": "price",
+              "description": "Preço da passagem (speed_boat_price)",
+              "type": "number"
             },
             {
-              "name": "name",
-              "value": "={{ $json.passenger_name }}"
+              "name": "passenger_cpf",
+              "description": "CPF",
+              "type": "string"
             },
             {
-              "name": "phone",
-              "value": "={{ $('Agent Webhook').item.json.body.phone_number }}"
+              "name": "passenger_name",
+              "description": "Nome completo",
+              "type": "string"
             },
             {
-              "name": "customers",
-              "value": "={{ { \"1\": $json.passenger_name } }}"
-            },
-            {
-              "name": "documents",
-              "value": "={{ { \"1\": $json.passenger_cpf } }}"
-            },
-            {
-              "name": "document_types",
-              "value": "={{ { \"1\": \"cpf\" } }}"
-            },
-            {
-              "name": "birthdays",
-              "value": "={{ [ $json.passenger_birthday ] }}"
-            },
-            {
-              "name": "data",
-              "value": "={{ JSON.stringify([{comodity:'Assento', field:'speed_boat_price', customer_fields:1, min_customer_fields:1, price: parseFloat($json.price), tax:'5.5', quantity:1}]) }}"
+              "name": "passenger_birthday",
+              "description": "Data de nascimento no formato YYYY-MM-DD",
+              "type": "string"
             }
           ]
-        }
+        },
+        "method": "POST",
+        "url": "https://embarcar-e83ea296df06.herokuapp.com/api/orders/create",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"route_id\": {route_id},\n  \"trip_id\": {trip_id},\n  \"date\": \"{date}\",\n  \"payment_method\": \"PIX\",\n  \"name\": \"{passenger_name}\",\n  \"phone\": \"{{ $('Agent Webhook').item.json.body.phone_number }}\",\n  \"customers\": { \"1\": \"{passenger_name}\" },\n  \"documents\": { \"1\": \"{passenger_cpf}\" },\n  \"document_types\": { \"1\": \"cpf\" },\n  \"birthdays\": [\"{passenger_birthday}\"],\n  \"data\": \"[{\\\"comodity\\\":\\\"Assento\\\",\\\"field\\\":\\\"speed_boat_price\\\",\\\"customer_fields\\\":1,\\\"min_customer_fields\\\":1,\\\"price\\\":{price},\\\"tax\\\":\\\"5.5\\\",\\\"quantity\\\":1}]\"\n}"
       },
       "id": "gold-star-agent-tool-pagamento",
       "name": "Gerar_Pagamento",
