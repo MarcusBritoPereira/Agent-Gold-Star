@@ -15,12 +15,38 @@ for (const file of files) {
     for (const branch of outputs.main || []) for (const target of branch || []) if (!names.has(target.node)) errors.push(`${file}: connection target ${target.node} does not exist`);
   }
   const text = JSON.stringify(workflow);
-  for (const forbidden of ['YOUR_PHONE_NUMBER_ID', 'YOUR/SLACK/WEBHOOK', 'graph.facebook.com', 'localhost:8088']) if (text.includes(forbidden)) errors.push(`${file}: contains forbidden legacy value ${forbidden}`);
+  for (const forbidden of [
+    'YOUR_PHONE_NUMBER_ID',
+    'YOUR/SLACK/WEBHOOK',
+    'graph.facebook.com',
+    'localhost:8088',
+    'host.docker.internal:8088',
+    'gold_star_api_key_123',
+    'http://n8n:5678',
+    'http://mock-api:8090'
+  ]) {
+    if (text.includes(forbidden)) errors.push(`${file}: contains forbidden legacy value ${forbidden}`);
+  }
+  if (workflow.settings?.saveDataSuccessExecution !== 'none') errors.push(`${file}: success execution data must not be persisted`);
+  if (workflow.settings?.saveManualExecutions !== false) errors.push(`${file}: manual execution data must not be persisted`);
   for (const workflowNode of workflow.nodes || []) {
     if (workflowNode.type === 'n8n-nodes-base.postgres') {
       if (!workflowNode.parameters.query.includes('$')) errors.push(`${file}/${workflowNode.name}: SQL must use positional parameters`);
       if (!workflowNode.parameters.options?.queryReplacement) errors.push(`${file}/${workflowNode.name}: missing query replacements`);
     }
+    if (workflowNode.type === 'n8n-nodes-base.httpRequest') {
+      const headers = workflowNode.parameters.headerParameters?.parameters || [];
+      for (const header of headers) {
+        if (String(header.value || '').includes('{{') && !String(header.value || '').startsWith('={{')) {
+          errors.push(`${file}/${workflowNode.name}: header ${header.name} must use a full n8n expression`);
+        }
+      }
+    }
+  }
+  if (file === '08_error_monitoring.json') {
+    if (!names.has('Alert URL Configured?')) errors.push(`${file}: missing alert URL guard`);
+    const alertConnections = workflow.connections?.['Alert URL Configured?']?.main?.[0] || [];
+    if (!alertConnections.some((target) => target.node === 'Send Alert')) errors.push(`${file}: alert sender must be behind the URL guard`);
   }
 }
 const trackedTextFiles = ['activate_workflows.js','cleanup_n8n.js','deploy_to_n8n.js','test_system.js','system_documentation.md'];

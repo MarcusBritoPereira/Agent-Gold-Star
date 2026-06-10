@@ -105,7 +105,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "http://host.docker.internal:8088/message/sendText/goldstar",
+        "url": "={{ $env.EVOLUTION_API_URL + '/message/sendText/' + $env.EVOLUTION_INSTANCE }}",
         "options": {
           "timeout": 15000,
           "response": {
@@ -119,7 +119,7 @@
           "parameters": [
             {
               "name": "apikey",
-              "value": "gold_star_api_key_123"
+              "value": "={{ $env.EVOLUTION_API_KEY }}"
             }
           ]
         },
@@ -199,8 +199,8 @@
   "settings": {
     "executionOrder": "v1",
     "saveDataErrorExecution": "all",
-    "saveDataSuccessExecution": "all",
-    "saveManualExecutions": true
+    "saveDataSuccessExecution": "none",
+    "saveManualExecutions": false
   },
   "staticData": null,
   "tags": [],
