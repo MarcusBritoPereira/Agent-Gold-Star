@@ -70,6 +70,7 @@ services:
     environment:
       PORT: 8090
       EVOLUTION_API_KEY: ${EVOLUTION_API_KEY:-change-me}
+      ASAAS_API_KEY: ${ASAAS_API_KEY:-}
     ports:
       - "${MOCK_API_PORT:-8090}:8090"
     volumes:
