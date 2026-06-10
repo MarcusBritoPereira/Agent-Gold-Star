@@ -22,7 +22,12 @@ const server = http.createServer(async (request, response) => {
   }
   if (request.method === 'GET' && url.pathname === '/api/routes/available_seats/') {
     const origin=normalize(url.searchParams.get('origin')); const destination=normalize(url.searchParams.get('destination'));
-    const matching=trips.filter((trip) => normalize(trip.origin).includes(origin) && normalize(trip.destination).includes(destination));
+    const matching=trips.filter((trip) => {
+      const tripOrg = normalize(trip.origin);
+      const tripDest = normalize(trip.destination);
+      return (!origin || tripOrg.includes(origin) || origin.includes(tripOrg)) &&
+             (!destination || tripDest.includes(destination) || destination.includes(tripDest));
+    });
     return json(response, 200, { trips: matching, trip: matching[0] || null });
   }
   if (request.method === 'POST' && url.pathname === '/api/orders/create') {
