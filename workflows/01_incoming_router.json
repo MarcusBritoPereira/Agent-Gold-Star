@@ -133,7 +133,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "={{ $env.INTERNAL_N8N_WEBHOOK_URL + '/webhook/intent-detection' }}",
+        "url": "={{ $env.INTERNAL_N8N_WEBHOOK_URL + '/webhook/ai-agent' }}",
         "options": {
           "timeout": 15000,
           "response": {

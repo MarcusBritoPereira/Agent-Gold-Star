@@ -1,0 +1,264 @@
+{
+  "name": "02 - IA Conversational Agent",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "ai-agent",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "id": "gold-star-agent-webhook",
+      "name": "Agent Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "Você é o assistente virtual de vendas da empresa de viagens hidroviárias Gold Star. Seu objetivo é ajudar o usuário a encontrar viagens e comprar passagens de forma conversacional e amigável.\n\nRegras:\n1. Colete a Cidade de Origem, Cidade de Destino e Data da Viagem.\n2. Quando tiver esses dados, use a ferramenta 'Consultar_Poltronas' para buscar opções disponíveis e os preços (os preços estão em centavos, então divida por 100 para mostrar em reais).\n3. Informe ao usuário as opções e o valor.\n4. Se o usuário quiser comprar, peça o Nome Completo e o CPF do passageiro.\n5. Quando tiver todas essas informações (origem, destino, data, nome e cpf), use a ferramenta 'Gerar_Pagamento'.\n6. Retorne para o usuário a mensagem de sucesso e o link de pagamento gerado pela ferramenta.\n\nSempre seja educado e direto. Responda apenas com o texto final que será enviado ao cliente no WhatsApp.",
+        "options": {
+          "systemMessage": "Você é o agente de vendas da Gold Star."
+        }
+      },
+      "id": "gold-star-agent-node",
+      "name": "AI Agent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.7,
+      "position": [
+        250,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "modelName": "models/gemini-2.5-flash",
+        "options": {}
+      },
+      "id": "gold-star-agent-gemini",
+      "name": "Gemini Chat Model",
+      "type": "@n8n/n8n-nodes-langchain.chatModelGemini",
+      "typeVersion": 1,
+      "position": [
+        250,
+        500
+      ],
+      "credentials": {
+        "geminiApi": {
+          "id": "__GEMINI_CREDENTIAL_ID__",
+          "name": "__GEMINI_CREDENTIAL_NAME__"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "contextWindowLength": 10,
+        "sessionKey": "={{ $json.body.session_id }}"
+      },
+      "id": "gold-star-agent-memory",
+      "name": "Window Buffer Memory",
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.2,
+      "position": [
+        400,
+        500
+      ]
+    },
+    {
+      "parameters": {
+        "name": "Consultar_Poltronas",
+        "description": "Busca horários, opções de viagens e os preços das poltronas. Requer informar a origem e o destino.",
+        "method": "GET",
+        "url": "http://mock-api:8090/api/routes/available_seats/",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "origin",
+              "value": "={{ $fromAI('origin') }}"
+            },
+            {
+              "name": "destination",
+              "value": "={{ $fromAI('destination') }}"
+            }
+          ]
+        }
+      },
+      "id": "gold-star-agent-tool-consultar",
+      "name": "Consultar_Poltronas",
+      "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
+      "typeVersion": 1.1,
+      "position": [
+        550,
+        500
+      ]
+    },
+    {
+      "parameters": {
+        "name": "Gerar_Pagamento",
+        "description": "Gera um pedido e retorna o link de pagamento do Asaas. Requer origem, destino, data da viagem (travel_date), cpf do passageiro e nome.",
+        "method": "POST",
+        "url": "http://mock-api:8090/api/orders/create",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "origin",
+              "value": "={{ $fromAI('origin') }}"
+            },
+            {
+              "name": "destination",
+              "value": "={{ $fromAI('destination') }}"
+            },
+            {
+              "name": "travel_date",
+              "value": "={{ $fromAI('travel_date') }}"
+            },
+            {
+              "name": "passenger_cpf",
+              "value": "={{ $fromAI('passenger_cpf') }}"
+            },
+            {
+              "name": "passenger_name",
+              "value": "={{ $fromAI('passenger_name') }}"
+            },
+            {
+              "name": "session_id",
+              "value": "={{ $('Agent Webhook').item.json.body.session_id }}"
+            },
+            {
+              "name": "phone_number",
+              "value": "={{ $('Agent Webhook').item.json.body.phone_number }}"
+            }
+          ]
+        }
+      },
+      "id": "gold-star-agent-tool-pagamento",
+      "name": "Gerar_Pagamento",
+      "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
+      "typeVersion": 1.1,
+      "position": [
+        700,
+        500
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.EVOLUTION_API_URL + '/message/sendText/' + $env.EVOLUTION_INSTANCE }}",
+        "options": {
+          "timeout": 15000,
+          "response": {
+            "response": {
+              "neverError": false
+            }
+          }
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $env.EVOLUTION_API_KEY }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ JSON.stringify({ number: $('Agent Webhook').item.json.body.phone_number, text: $json.output }) }}"
+      },
+      "id": "gold-star-agent-send",
+      "name": "Send Reply via WhatsApp",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        600,
+        300
+      ]
+    }
+  ],
+  "connections": {
+    "Agent Webhook": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gemini Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Window Buffer Memory": {
+      "ai_memory": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Consultar_Poltronas": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gerar_Pagamento": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent": {
+      "main": [
+        [
+          {
+            "node": "Send Reply via WhatsApp",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "none"
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 0,
+  "active": false,
+  "versionId": "gold-star-0030"
+}
