@@ -4,6 +4,15 @@ const { client, deployableWorkflow } = require('./scripts/lib/n8n');
 
 async function main() {
   const { config, request } = client();
+  
+  // Find the gemini credential
+  const creds = await request('/credentials');
+  const geminiCred = creds.data?.find(c => c.type === 'googlePalmApi' || c.name.toLowerCase().includes('gemini'));
+  if (geminiCred) {
+    process.env.GEMINI_CREDENTIAL_ID = geminiCred.id;
+  } else {
+    throw new Error('Please create a Google Gemini credential in the N8N UI before deploying!');
+  }
   const directory = path.join(__dirname, 'workflows');
   const files = fs.readdirSync(directory).filter((file) => /^\d{2}_.+\.json$/.test(file)).sort();
   const listed = await request('/workflows?limit=250');

@@ -33,8 +33,14 @@ function deployableWorkflow(workflow, config) {
       credential.id = config.credentialId;
       credential.name = config.credentialName;
     }
-    delete workflowNode.credentials?.geminiApi;
-    delete workflowNode.credentials?.googlePalmApi;
+    if (workflowNode.credentials?.geminiApi || workflowNode.credentials?.googlePalmApi) {
+      workflowNode.credentials = {
+        googlePalmApi: {
+          id: process.env.GEMINI_CREDENTIAL_ID,
+          name: "Gold Star Gemini API"
+        }
+      };
+    }
   }
   return copy;
 }
