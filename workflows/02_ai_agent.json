@@ -41,7 +41,7 @@
       },
       "id": "gold-star-agent-gemini",
       "name": "Gemini Chat Model",
-      "type": "@n8n/n8n-nodes-langchain.chatModelGemini",
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
       "typeVersion": 1,
       "position": [
         250,
