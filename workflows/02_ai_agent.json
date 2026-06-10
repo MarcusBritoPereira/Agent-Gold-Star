@@ -101,11 +101,11 @@
           "parameters": [
             {
               "name": "origin",
-              "value": "={{ $fromAI('origin') }}"
+              "value": "={{ $fromAI('origin', 'A cidade de origem', 'string') }}"
             },
             {
               "name": "destination",
-              "value": "={{ $fromAI('destination') }}"
+              "value": "={{ $fromAI('destination', 'A cidade de destino', 'string') }}"
             }
           ]
         }
@@ -130,23 +130,23 @@
           "parameters": [
             {
               "name": "origin",
-              "value": "={{ $fromAI('origin') }}"
+              "value": "={{ $fromAI('origin', 'Cidade de origem', 'string') }}"
             },
             {
               "name": "destination",
-              "value": "={{ $fromAI('destination') }}"
+              "value": "={{ $fromAI('destination', 'Cidade de destino', 'string') }}"
             },
             {
               "name": "travel_date",
-              "value": "={{ $fromAI('travel_date') }}"
+              "value": "={{ $fromAI('travel_date', 'Data da viagem no formato DD/MM/AAAA', 'string') }}"
             },
             {
               "name": "passenger_cpf",
-              "value": "={{ $fromAI('passenger_cpf') }}"
+              "value": "={{ $fromAI('passenger_cpf', 'CPF do passageiro', 'string') }}"
             },
             {
               "name": "passenger_name",
-              "value": "={{ $fromAI('passenger_name') }}"
+              "value": "={{ $fromAI('passenger_name', 'Nome completo do passageiro', 'string') }}"
             },
             {
               "name": "session_id",
