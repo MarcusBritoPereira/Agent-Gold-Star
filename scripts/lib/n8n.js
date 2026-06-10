@@ -23,6 +23,9 @@ function deployableWorkflow(workflow, config) {
   delete copy.active;
   delete copy.id;
   delete copy.versionId;
+  delete copy.triggerCount;
+  delete copy.tags;
+  delete copy.pinData;
   for (const workflowNode of copy.nodes || []) {
     if (workflowNode.credentials?.postgres) {
       const credential = workflowNode.credentials.postgres;
