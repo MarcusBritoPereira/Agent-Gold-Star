@@ -110,7 +110,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "http://host.docker.internal:8088/message/sendText/goldstar",
+        "url": "={{ $env.EVOLUTION_API_URL + '/message/sendText/' + $env.EVOLUTION_INSTANCE }}",
         "options": {
           "timeout": 15000,
           "response": {
@@ -124,7 +124,7 @@
           "parameters": [
             {
               "name": "apikey",
-              "value": "gold_star_api_key_123"
+              "value": "={{ $env.EVOLUTION_API_KEY }}"
             }
           ]
         },
@@ -145,7 +145,7 @@
     {
       "parameters": {
         "method": "GET",
-        "url": "http://mock-api:8090/api/routes/available_seats/",
+        "url": "={{ $env.BACKEND_BASE_URL + '/api/routes/available_seats/' }}",
         "options": {
           "timeout": 15000,
           "response": {
@@ -154,7 +154,23 @@
             }
           }
         },
-        "sendQuery": false
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "origin",
+              "value": "={{ $json.payload.origin }}"
+            },
+            {
+              "name": "destination",
+              "value": "={{ $json.payload.destination }}"
+            },
+            {
+              "name": "date",
+              "value": "={{ $json.payload.travel_date }}"
+            }
+          ]
+        }
       },
       "id": "gold-star-0037",
       "name": "Check Availability",
@@ -235,7 +251,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "http://n8n:5678/webhook/create-payment",
+        "url": "={{ $env.INTERNAL_N8N_WEBHOOK_URL + '/webhook/create-payment' }}",
         "options": {
           "timeout": 15000,
           "response": {
@@ -247,7 +263,7 @@
         "sendBody": true,
         "contentType": "raw",
         "rawContentType": "application/json",
-        "body": "={{ JSON.stringify({ session_id: $json.session_id || $json.id || $('Evaluate Required Data').item.json.session_id }) }}"
+        "body": "={{ JSON.stringify({ session_id: $json.id }) }}"
       },
       "id": "gold-star-0042",
       "name": "Call Payment Workflow",
@@ -261,7 +277,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "http://host.docker.internal:8088/message/sendText/goldstar",
+        "url": "={{ $env.EVOLUTION_API_URL + '/message/sendText/' + $env.EVOLUTION_INSTANCE }}",
         "options": {
           "timeout": 15000,
           "response": {
@@ -275,7 +291,7 @@
           "parameters": [
             {
               "name": "apikey",
-              "value": "gold_star_api_key_123"
+              "value": "={{ $env.EVOLUTION_API_KEY }}"
             }
           ]
         },
@@ -413,8 +429,8 @@
   "settings": {
     "executionOrder": "v1",
     "saveDataErrorExecution": "all",
-    "saveDataSuccessExecution": "all",
-    "saveManualExecutions": true
+    "saveDataSuccessExecution": "none",
+    "saveManualExecutions": false
   },
   "staticData": null,
   "tags": [],

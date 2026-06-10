@@ -65,7 +65,7 @@
           "parameters": [
             {
               "name": "Authorization",
-              "value": "=Bearer {{ $env.OPENAI_API_KEY }}"
+              "value": "={{ 'Bearer ' + $env.OPENAI_API_KEY }}"
             }
           ]
         },
@@ -125,7 +125,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "UPDATE conversational_sessions\nSET intent = CASE\n      WHEN current_state IN ('CONFIRMING_ORDER','CREATING_PAYMENT')\n        AND lower($4) ~ '(confirmo|confirmar|pode seguir|sim|fechar|finalizar)'\n        THEN 'BUY_TICKET'\n      ELSE $2\n    END,\n    state_payload =\n      state_payload\n      || $3::jsonb\n      || jsonb_strip_nulls(jsonb_build_object(\n        'origin',\n          COALESCE(\n            $3::jsonb->>'origin',\n            (regexp_match(lower($4), 'origem\\s+([^,.;]+)'))[1],\n            (regexp_match(lower($4), 'de\\s+([^,.;]+)\\s+para'))[1]\n          ),\n        'destination',\n          COALESCE(\n            $3::jsonb->>'destination',\n            (regexp_match(lower($4), 'destino\\s+([^,.;]+)'))[1],\n            (regexp_match(lower($4), 'para\\s+([^,.;]+)'))[1]\n          )\n      )),\n    current_state = CASE\n      WHEN $2 = 'HUMAN_HELP'\n        THEN 'HUMAN_HANDOFF'::conversation_state\n\n      WHEN current_state = 'CONFIRMING_ORDER'\n        AND lower($4) ~ '(confirmo|confirmar|pode seguir|sim|fechar|finalizar)'\n        THEN 'CREATING_PAYMENT'::conversation_state\n\n      WHEN $2 = 'BUY_TICKET'\n        AND ((state_payload || $3::jsonb) ? 'origin')\n        AND ((state_payload || $3::jsonb) ? 'destination')\n        AND ((state_payload || $3::jsonb) ? 'travel_date')\n        AND ((state_payload || $3::jsonb) ? 'passenger_name')\n        AND ((state_payload || $3::jsonb) ? 'passenger_cpf')\n        THEN 'CONFIRMING_ORDER'::conversation_state\n\n      WHEN $2 = 'BUY_TICKET'\n        AND NOT (((state_payload || $3::jsonb) ? 'origin')\n          AND ((state_payload || $3::jsonb) ? 'destination')\n          AND ((state_payload || $3::jsonb) ? 'travel_date'))\n        THEN 'COLLECTING_TRIP'::conversation_state\n\n      WHEN $2 = 'BUY_TICKET'\n        AND NOT (((state_payload || $3::jsonb) ? 'passenger_name')\n          AND ((state_payload || $3::jsonb) ? 'passenger_cpf'))\n        THEN 'COLLECTING_PASSENGER'::conversation_state\n\n      ELSE current_state\n    END,\n    expires_at = now() + interval '30 minutes'\nWHERE id = $1\nRETURNING *;",
+        "query": "UPDATE conversational_sessions\nSET intent = CASE\n      WHEN current_state IN ('CONFIRMING_ORDER','CREATING_PAYMENT')\n        AND lower($4) ~ '(confirmo|confirmar|pode seguir|sim|fechar|finalizar)'\n        THEN 'BUY_TICKET'\n      ELSE $2\n    END,\n    state_payload =\n      state_payload\n      || $3::jsonb\n      || jsonb_strip_nulls(jsonb_build_object(\n        'origin',\n          COALESCE(\n            $3::jsonb->>'origin',\n            (regexp_match(lower($4), 'origem\\\\s+([^,.;]+)'))[1],\n            (regexp_match(lower($4), 'de\\\\s+([^,.;]+)\\\\s+para'))[1]\n          ),\n        'destination',\n          COALESCE(\n            $3::jsonb->>'destination',\n            (regexp_match(lower($4), 'destino\\\\s+([^,.;]+)'))[1],\n            (regexp_match(lower($4), 'para\\\\s+([^,.;]+)'))[1]\n          )\n      )),\n    current_state = CASE\n      WHEN $2 = 'HUMAN_HELP'\n        THEN 'HUMAN_HANDOFF'::conversation_state\n\n      WHEN current_state = 'CONFIRMING_ORDER'\n        AND lower($4) ~ '(confirmo|confirmar|pode seguir|sim|fechar|finalizar)'\n        THEN 'CREATING_PAYMENT'::conversation_state\n\n      WHEN $2 = 'BUY_TICKET'\n        AND ((state_payload || $3::jsonb) ? 'origin')\n        AND ((state_payload || $3::jsonb) ? 'destination')\n        AND ((state_payload || $3::jsonb) ? 'travel_date')\n        AND ((state_payload || $3::jsonb) ? 'passenger_name')\n        AND ((state_payload || $3::jsonb) ? 'passenger_cpf')\n        THEN 'CONFIRMING_ORDER'::conversation_state\n\n      WHEN $2 = 'BUY_TICKET'\n        AND NOT (((state_payload || $3::jsonb) ? 'origin')\n          AND ((state_payload || $3::jsonb) ? 'destination')\n          AND ((state_payload || $3::jsonb) ? 'travel_date'))\n        THEN 'COLLECTING_TRIP'::conversation_state\n\n      WHEN $2 = 'BUY_TICKET'\n        AND NOT (((state_payload || $3::jsonb) ? 'passenger_name')\n          AND ((state_payload || $3::jsonb) ? 'passenger_cpf'))\n        THEN 'COLLECTING_PASSENGER'::conversation_state\n\n      ELSE current_state\n    END,\n    expires_at = now() + interval '30 minutes'\nWHERE id = $1\nRETURNING *;",
         "options": {
           "queryReplacement": "={{ [$json.session_id, $json.intent, JSON.stringify($json.entities), $json.message || $json.body?.message || ''] }}"
         }
@@ -162,6 +162,9 @@
             },
             {
               "value2": "HUMAN_HELP"
+            },
+            {
+              "value2": "OTHER"
             }
           ]
         },
@@ -179,7 +182,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "http://n8n:5678/webhook/sales-flow",
+        "url": "={{ $env.INTERNAL_N8N_WEBHOOK_URL + '/webhook/sales-flow' }}",
         "options": {
           "timeout": 15000,
           "response": {
@@ -205,7 +208,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "http://n8n:5678/webhook/operational-query",
+        "url": "={{ $env.INTERNAL_N8N_WEBHOOK_URL + '/webhook/operational-query' }}",
         "options": {
           "timeout": 15000,
           "response": {
@@ -231,7 +234,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "http://host.docker.internal:8088/message/sendText/goldstar",
+        "url": "={{ $env.EVOLUTION_API_URL + '/message/sendText/' + $env.EVOLUTION_INSTANCE }}",
         "options": {
           "timeout": 15000,
           "response": {
@@ -245,7 +248,7 @@
           "parameters": [
             {
               "name": "apikey",
-              "value": "gold_star_api_key_123"
+              "value": "={{ $env.EVOLUTION_API_KEY }}"
             }
           ]
         },
@@ -266,7 +269,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "http://host.docker.internal:8088/message/sendText/goldstar",
+        "url": "={{ $env.EVOLUTION_API_URL + '/message/sendText/' + $env.EVOLUTION_INSTANCE }}",
         "options": {
           "timeout": 15000,
           "response": {
@@ -280,7 +283,7 @@
           "parameters": [
             {
               "name": "apikey",
-              "value": "gold_star_api_key_123"
+              "value": "={{ $env.EVOLUTION_API_KEY }}"
             }
           ]
         },
@@ -428,8 +431,8 @@
   "settings": {
     "executionOrder": "v1",
     "saveDataErrorExecution": "all",
-    "saveDataSuccessExecution": "all",
-    "saveManualExecutions": true
+    "saveDataSuccessExecution": "none",
+    "saveManualExecutions": false
   },
   "staticData": null,
   "tags": [],

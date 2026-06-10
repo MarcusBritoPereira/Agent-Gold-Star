@@ -17,6 +17,23 @@ test('all workflow connections target existing nodes', () => {
     }
   }
 });
+
+test('switch nodes only use supported output indexes', () => {
+  for (const file of files) {
+    const workflow = JSON.parse(fs.readFileSync(path.join(directory, file), 'utf8'));
+    const nodesByName = new Map(workflow.nodes.map((node) => [node.name, node]));
+    for (const node of workflow.nodes.filter((candidate) => candidate.type === 'n8n-nodes-base.switch')) {
+      const outputCount = node.parameters.rules.rules.length;
+      assert.ok(Number.isInteger(node.parameters.fallbackOutput), `${file}/${node.name}/fallbackOutput`);
+      assert.ok(node.parameters.fallbackOutput >= 0 && node.parameters.fallbackOutput < outputCount, `${file}/${node.name}/fallbackOutput`);
+      const sourceConnections = workflow.connections[node.name]?.main || [];
+      sourceConnections.forEach((branch, index) => {
+        if (branch?.length) assert.ok(index < outputCount, `${file}/${node.name}/output/${index}`);
+      });
+      assert.equal(nodesByName.get(node.name), node);
+    }
+  }
+});
 test('PostgreSQL nodes use positional replacements', () => {
   for (const file of files) {
     const workflow = JSON.parse(fs.readFileSync(path.join(directory, file), 'utf8'));
@@ -28,5 +45,32 @@ test('PostgreSQL nodes use positional replacements', () => {
 });
 test('legacy providers and secret placeholders are absent', () => {
   const content = files.map((file) => fs.readFileSync(path.join(directory, file), 'utf8')).join('\n');
-  assert.doesNotMatch(content, /graph\.facebook\.com|YOUR_PHONE_NUMBER_ID|YOUR\/SLACK\/WEBHOOK|eyJhbGciOiJ/);
+  assert.doesNotMatch(content, /graph\.facebook\.com|YOUR_PHONE_NUMBER_ID|YOUR\/SLACK\/WEBHOOK|eyJhbGciOiJ|gold_star_api_key_123|host\.docker\.internal:8088|http:\/\/n8n:5678|http:\/\/mock-api:8090/);
+});
+
+test('production workflows do not persist successful execution payloads', () => {
+  for (const file of files) {
+    const workflow = JSON.parse(fs.readFileSync(path.join(directory, file), 'utf8'));
+    assert.equal(workflow.settings?.saveDataSuccessExecution, 'none', file);
+    assert.equal(workflow.settings?.saveManualExecutions, false, file);
+  }
+});
+
+test('dynamic headers use full n8n expressions', () => {
+  for (const file of files) {
+    const workflow = JSON.parse(fs.readFileSync(path.join(directory, file), 'utf8'));
+    for (const node of workflow.nodes.filter((candidate) => candidate.type === 'n8n-nodes-base.httpRequest')) {
+      for (const header of node.parameters.headerParameters?.parameters || []) {
+        assert.ok(!String(header.value || '').includes('{{') || String(header.value || '').startsWith('={{'), `${file}/${node.name}/${header.name}`);
+      }
+    }
+  }
+});
+
+test('monitoring workflow skips outbound alerts when no URL is configured', () => {
+  const workflow = JSON.parse(fs.readFileSync(path.join(directory, '08_error_monitoring.json'), 'utf8'));
+  assert.ok(workflow.nodes.some((node) => node.name === 'Alert URL Configured?' && node.type === 'n8n-nodes-base.if'));
+  const targets = workflow.connections['Alert URL Configured?']?.main?.[0]?.map((target) => target.node) || [];
+  assert.deepEqual(targets, ['Send Alert']);
+  assert.equal(workflow.nodes.find((node) => node.name === 'Send Alert').parameters.url, '={{ $env.ALERT_WEBHOOK_URL || $env.SLACK_WEBHOOK_URL }}');
 });
