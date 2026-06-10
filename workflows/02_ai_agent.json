@@ -19,6 +19,29 @@
     },
     {
       "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "1",
+              "name": "sessionId",
+              "value": "={{ $json.body.session_id }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "gold-star-set-session",
+      "name": "Set Session ID",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        150,
+        300
+      ]
+    },
+    {
+      "parameters": {
         "promptType": "define",
         "text": "Você é o assistente virtual de vendas da empresa de viagens hidroviárias Gold Star. Seu objetivo é ajudar o usuário a encontrar viagens e comprar passagens de forma conversacional e amigável.\n\nRegras:\n1. Colete a Cidade de Origem, Cidade de Destino e Data da Viagem.\n2. Quando tiver esses dados, use a ferramenta 'Consultar_Poltronas' para buscar opções disponíveis e os preços (os preços estão em centavos, então divida por 100 para mostrar em reais).\n3. Informe ao usuário as opções e o valor.\n4. Se o usuário quiser comprar, peça o Nome Completo e o CPF do passageiro.\n5. Quando tiver todas essas informações (origem, destino, data, nome e cpf), use a ferramenta 'Gerar_Pagamento'.\n6. Retorne para o usuário a mensagem de sucesso e o link de pagamento gerado pela ferramenta.\n\nSempre seja educado e direto. Responda apenas com o texto final que será enviado ao cliente no WhatsApp.",
         "options": {
@@ -30,7 +53,7 @@
       "type": "@n8n/n8n-nodes-langchain.agent",
       "typeVersion": 1.7,
       "position": [
-        250,
+        300,
         300
       ]
     },
@@ -44,7 +67,7 @@
       "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
       "typeVersion": 1,
       "position": [
-        250,
+        300,
         500
       ],
       "credentials": {
@@ -56,15 +79,14 @@
     },
     {
       "parameters": {
-        "contextWindowLength": 10,
-        "sessionId": "={{ $('Agent Webhook').item.json.body.session_id }}"
+        "contextWindowLength": 10
       },
       "id": "gold-star-agent-memory",
       "name": "Window Buffer Memory",
       "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
       "typeVersion": 1.2,
       "position": [
-        400,
+        450,
         500
       ]
     },
@@ -93,7 +115,7 @@
       "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
       "typeVersion": 1.1,
       "position": [
-        550,
+        600,
         500
       ]
     },
@@ -142,7 +164,7 @@
       "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
       "typeVersion": 1.1,
       "position": [
-        700,
+        750,
         500
       ]
     },
@@ -177,13 +199,24 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        600,
+        650,
         300
       ]
     }
   ],
   "connections": {
     "Agent Webhook": {
+      "main": [
+        [
+          {
+            "node": "Set Session ID",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Session ID": {
       "main": [
         [
           {
