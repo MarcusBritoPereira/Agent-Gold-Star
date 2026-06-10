@@ -43,7 +43,7 @@
     {
       "parameters": {
         "promptType": "define",
-        "text": "Você é o assistente virtual de vendas da empresa de viagens hidroviárias Gold Star. Seu objetivo é ajudar o usuário a encontrar viagens e comprar passagens de forma conversacional e amigável.\n\nRegras:\n1. Colete a Cidade de Origem, Cidade de Destino e Data da Viagem.\n2. Quando tiver esses dados, use a ferramenta 'Consultar_Poltronas' para buscar opções disponíveis e os preços (os preços estão em centavos, então divida por 100 para mostrar em reais).\n3. Informe ao usuário as opções e o valor.\n4. Se o usuário quiser comprar, peça o Nome Completo e o CPF do passageiro.\n5. Quando tiver todas essas informações (origem, destino, data, nome e cpf), use a ferramenta 'Gerar_Pagamento'.\n6. Retorne para o usuário a mensagem de sucesso e o link de pagamento gerado pela ferramenta.\n\nSempre seja educado e direto. Responda apenas com o texto final que será enviado ao cliente no WhatsApp.",
+        "text": "Você é o assistente virtual de vendas da empresa de viagens hidroviárias Gold Star. Seu objetivo é ajudar o usuário a encontrar viagens e comprar passagens de forma conversacional e amigável.\n\nRegras:\n1. Colete a Cidade de Origem e a Cidade de Destino.\n2. Chame a ferramenta Buscar_Rotas informando a origem para encontrar as opções disponíveis e os seus IDs (route_id). Se a origem não retornar nada, informe o usuário.\n3. Apresente as opções de rotas ao usuário, informando os horários e preços. Pergunte em qual data ele deseja viajar (o formato da data para a API deve ser AAAA-MM-DD).\n4. Com o route_id e a data escolhida, chame a ferramenta Consultar_Assentos para verificar se há vagas (available_seats > 0). Essa ferramenta também retorna o trip_id.\n5. Se houver vagas, informe que está disponível e peça os dados do passageiro: CPF, Nome Completo e Data de Nascimento.\n6. Com os dados completos (route_id, trip_id, data, preço, nome, cpf e data de nascimento), chame a ferramenta Gerar_Pagamento.\n7. Entregue o Link de Pagamento (payment_link) gerado ao usuário de forma clara.\n8. Seja gentil, persuasivo e use emojis moderadamente. Responda apenas com o texto final que será enviado ao cliente no WhatsApp.",
         "options": {
           "systemMessage": "Você é o agente de vendas da Gold Star."
         }
@@ -92,28 +92,24 @@
     },
     {
       "parameters": {
-        "name": "Consultar_Poltronas",
-        "description": "Busca horários, opções de viagens e os preços das poltronas. Requer informar a origem e o destino.",
+        "name": "Buscar_Rotas",
+        "description": "Busca rotas disponíveis a partir de uma cidade de origem. Retorna os route_id, destinos, horários e preços (speed_boat_price).",
         "specifyInputSchema": true,
-        "jsonSchema": "{\n  \"type\": \"object\",\n  \"properties\": {\n    \"origin\": {\n      \"type\": \"string\",\n      \"description\": \"A cidade de origem\"\n    },\n    \"destination\": {\n      \"type\": \"string\",\n      \"description\": \"A cidade de destino\"\n    }\n  },\n  \"required\": [\"origin\", \"destination\"]\n}",
+        "jsonSchema": "{\n  \"type\": \"object\",\n  \"properties\": {\n    \"origin\": {\n      \"type\": \"string\",\n      \"description\": \"A cidade de origem\"\n    }\n  },\n  \"required\": [\"origin\"]\n}",
         "method": "GET",
-        "url": "http://mock-api:8090/api/routes/available_seats/",
+        "url": "https://embarcar-e83ea296df06.herokuapp.com/api/routes/show/",
         "sendQuery": true,
         "queryParameters": {
           "parameters": [
             {
-              "name": "origin",
+              "name": "q[origin_cont]",
               "value": "={{ $json.origin }}"
-            },
-            {
-              "name": "destination",
-              "value": "={{ $json.destination }}"
             }
           ]
         }
       },
-      "id": "gold-star-agent-tool-consultar",
-      "name": "Consultar_Poltronas",
+      "id": "gold-star-agent-tool-buscar-rotas",
+      "name": "Buscar_Rotas",
       "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
       "typeVersion": 1.1,
       "position": [
@@ -123,42 +119,94 @@
     },
     {
       "parameters": {
-        "name": "Gerar_Pagamento",
-        "description": "Gera um pedido e retorna o link de pagamento do Asaas. Requer origem, destino, data da viagem (travel_date), cpf do passageiro e nome.",
+        "name": "Consultar_Assentos",
+        "description": "Verifica a disponibilidade de assentos para uma rota e data. Retorna o trip_id e a quantidade de vagas.",
         "specifyInputSchema": true,
-        "jsonSchema": "{\n  \"type\": \"object\",\n  \"properties\": {\n    \"origin\": {\n      \"type\": \"string\",\n      \"description\": \"Cidade de origem\"\n    },\n    \"destination\": {\n      \"type\": \"string\",\n      \"description\": \"Cidade de destino\"\n    },\n    \"travel_date\": {\n      \"type\": \"string\",\n      \"description\": \"Data da viagem no formato DD/MM/AAAA\"\n    },\n    \"passenger_cpf\": {\n      \"type\": \"string\",\n      \"description\": \"CPF do passageiro\"\n    },\n    \"passenger_name\": {\n      \"type\": \"string\",\n      \"description\": \"Nome completo do passageiro\"\n    }\n  },\n  \"required\": [\"origin\", \"destination\", \"travel_date\", \"passenger_cpf\", \"passenger_name\"]\n}",
+        "jsonSchema": "{\n  \"type\": \"object\",\n  \"properties\": {\n    \"route_id\": {\n      \"type\": \"integer\",\n      \"description\": \"O ID da rota (route_id) escolhida\"\n    },\n    \"date\": {\n      \"type\": \"string\",\n      \"description\": \"Data da viagem no formato YYYY-MM-DD\"\n    }\n  },\n  \"required\": [\"route_id\", \"date\"]\n}",
+        "method": "GET",
+        "url": "https://embarcar-e83ea296df06.herokuapp.com/api/routes/available_seats/",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "web",
+              "value": "true"
+            },
+            {
+              "name": "route_id",
+              "value": "={{ $json.route_id }}"
+            },
+            {
+              "name": "date",
+              "value": "={{ $json.date }}"
+            }
+          ]
+        }
+      },
+      "id": "gold-star-agent-tool-consultar",
+      "name": "Consultar_Assentos",
+      "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
+      "typeVersion": 1.1,
+      "position": [
+        720,
+        500
+      ]
+    },
+    {
+      "parameters": {
+        "name": "Gerar_Pagamento",
+        "description": "Gera a ordem de pagamento. Requer route_id, trip_id, date, price, passenger_cpf, passenger_name, passenger_birthday.",
+        "specifyInputSchema": true,
+        "jsonSchema": "{\n  \"type\": \"object\",\n  \"properties\": {\n    \"route_id\": {\n      \"type\": \"integer\",\n      \"description\": \"ID da Rota\"\n    },\n    \"trip_id\": {\n      \"type\": \"integer\",\n      \"description\": \"ID da Viagem\"\n    },\n    \"date\": {\n      \"type\": \"string\",\n      \"description\": \"Data no formato YYYY-MM-DD\"\n    },\n    \"price\": {\n      \"type\": \"number\",\n      \"description\": \"Preço da passagem (speed_boat_price)\"\n    },\n    \"passenger_cpf\": {\n      \"type\": \"string\",\n      \"description\": \"CPF\"\n    },\n    \"passenger_name\": {\n      \"type\": \"string\",\n      \"description\": \"Nome completo\"\n    },\n    \"passenger_birthday\": {\n      \"type\": \"string\",\n      \"description\": \"Data de nascimento no formato YYYY-MM-DD\"\n    }\n  },\n  \"required\": [\"route_id\", \"trip_id\", \"date\", \"price\", \"passenger_cpf\", \"passenger_name\", \"passenger_birthday\"]\n}",
         "method": "POST",
-        "url": "http://mock-api:8090/api/orders/create",
+        "url": "https://embarcar-e83ea296df06.herokuapp.com/api/orders/create",
         "sendBody": true,
+        "contentType": "json",
         "bodyParameters": {
           "parameters": [
             {
-              "name": "origin",
-              "value": "={{ $json.origin }}"
+              "name": "route_id",
+              "value": "={{ $json.route_id }}"
             },
             {
-              "name": "destination",
-              "value": "={{ $json.destination }}"
+              "name": "trip_id",
+              "value": "={{ $json.trip_id }}"
             },
             {
-              "name": "travel_date",
-              "value": "={{ $json.travel_date }}"
+              "name": "date",
+              "value": "={{ $json.date }}"
             },
             {
-              "name": "passenger_cpf",
-              "value": "={{ $json.passenger_cpf }}"
+              "name": "payment_method",
+              "value": "PIX"
             },
             {
-              "name": "passenger_name",
+              "name": "name",
               "value": "={{ $json.passenger_name }}"
             },
             {
-              "name": "session_id",
-              "value": "={{ $('Agent Webhook').item.json.body.session_id }}"
+              "name": "phone",
+              "value": "={{ $('Agent Webhook').item.json.body.phone_number }}"
             },
             {
-              "name": "phone_number",
-              "value": "={{ $('Agent Webhook').item.json.body.phone_number }}"
+              "name": "customers",
+              "value": "={{ { \"1\": $json.passenger_name } }}"
+            },
+            {
+              "name": "documents",
+              "value": "={{ { \"1\": $json.passenger_cpf } }}"
+            },
+            {
+              "name": "document_types",
+              "value": "={{ { \"1\": \"cpf\" } }}"
+            },
+            {
+              "name": "birthdays",
+              "value": "={{ [ $json.passenger_birthday ] }}"
+            },
+            {
+              "name": "data",
+              "value": "={{ JSON.stringify([{comodity:'Assento', field:'speed_boat_price', customer_fields:1, min_customer_fields:1, price: parseFloat($json.price), tax:'5.5', quantity:1}]) }}"
             }
           ]
         }
@@ -168,7 +216,7 @@
       "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
       "typeVersion": 1.1,
       "position": [
-        750,
+        840,
         500
       ]
     },
