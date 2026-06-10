@@ -27,11 +27,20 @@ function deployableWorkflow(workflow, config) {
   delete copy.tags;
   delete copy.pinData;
   for (const workflowNode of copy.nodes || []) {
-    const credential = workflowNode.credentials?.postgres;
-    if (!credential) continue;
-    if (!config.credentialId) throw new Error('N8N_POSTGRES_CREDENTIAL_ID is required to deploy PostgreSQL workflows');
-    credential.id = config.credentialId;
-    credential.name = config.credentialName;
+    if (workflowNode.credentials?.postgres) {
+      const credential = workflowNode.credentials.postgres;
+      if (!config.credentialId) throw new Error('N8N_POSTGRES_CREDENTIAL_ID is required');
+      credential.id = config.credentialId;
+      credential.name = config.credentialName;
+    }
+    if (workflowNode.credentials?.geminiApi || workflowNode.credentials?.googlePalmApi) {
+      workflowNode.credentials = {
+        googlePalmApi: {
+          id: process.env.GEMINI_CREDENTIAL_ID,
+          name: "Gold Star Gemini API"
+        }
+      };
+    }
   }
   return copy;
 }

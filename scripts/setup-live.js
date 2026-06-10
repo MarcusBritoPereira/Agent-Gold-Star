@@ -16,7 +16,7 @@ async function main() {
   console.log(`N8N Webhook Base: ${n8nBaseUrl}`);
   console.log(`Instância: ${instance}`);
 
-  if (!apiKey || apiKey === 'change-me' || apiKey === 'gold_star_api_key_123') {
+  if (!apiKey || apiKey === 'change-me') {
     throw new Error('Erro: EVOLUTION_API_KEY inválida ou não configurada no .env');
   }
 
