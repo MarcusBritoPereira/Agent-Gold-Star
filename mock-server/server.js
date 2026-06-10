@@ -26,7 +26,62 @@ const server = http.createServer(async (request, response) => {
     return json(response, 200, { trips: matching, trip: matching[0] || null });
   }
   if (request.method === 'POST' && url.pathname === '/api/orders/create') {
-    const input=await body(request); const id=randomUUID(); const order={ id, ...input, payment_link:`http://localhost:${port}/pay/${id}`, customers:[{id:randomUUID(),name:input.customer?.name}] }; orders.set(id,order); return json(response,201,order);
+    const input = await body(request);
+    const id = input.external_reference || randomUUID();
+    let paymentLink = `http://localhost:${port}/pay/${id}`;
+    let customerId = randomUUID();
+
+    const asaasKey = process.env.ASAAS_API_KEY;
+    if (asaasKey && asaasKey !== 'change-me') {
+      try {
+        const isSandbox = asaasKey.startsWith('$aact_hmlg_');
+        const asaasUrl = isSandbox ? 'https://sandbox.asaas.com/api/v3' : 'https://www.asaas.com/api/v3';
+
+        // 1. Create customer
+        const custRes = await fetch(`${asaasUrl}/customers`, {
+          method: 'POST',
+          headers: { 'access_token': asaasKey, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: input.customer?.name || 'Cliente Gold Star',
+            cpfCnpj: input.customer?.cpf || '',
+            phone: input.customer?.phone || ''
+          })
+        });
+        const custData = await custRes.json();
+        if (custRes.ok && custData.id) {
+          customerId = custData.id;
+          
+          // 2. Create payment
+          const payRes = await fetch(`${asaasUrl}/payments`, {
+            method: 'POST',
+            headers: { 'access_token': asaasKey, 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              customer: customerId,
+              billingType: 'PIX',
+              value: (input.price_cents || 5000) / 100,
+              dueDate: new Date(Date.now() + 86400000).toISOString().split('T')[0],
+              description: `Passagem: ${input.origin || ''} -> ${input.destination || ''}`,
+              externalReference: id
+            })
+          });
+          const payData = await payRes.json();
+          if (payRes.ok && payData.invoiceUrl) {
+            paymentLink = payData.invoiceUrl;
+            console.log(`Real Asaas payment link created: ${paymentLink}`);
+          } else {
+            console.error('Failed to create Asaas payment, falling back to mock:', payData);
+          }
+        } else {
+          console.error('Failed to create Asaas customer, falling back to mock:', custData);
+        }
+      } catch (err) {
+        console.error('Asaas API integration error, falling back to mock:', err.message);
+      }
+    }
+
+    const order = { id, ...input, payment_link: paymentLink, customers: [{ id: customerId, name: input.customer?.name }] };
+    orders.set(id, order);
+    return json(response, 201, order);
   }
   const seatMatch=url.pathname.match(/^\/orders\/seats\/([^/]+)$/);
   if (seatMatch && request.method === 'POST') { const order=orders.get(seatMatch[1]); if(!order) return json(response,404,{error:'order_not_found'}); order.allocation=await body(request); return json(response,200,{ok:true,order_id:seatMatch[1]}); }
