@@ -8,7 +8,8 @@ async function main() {
         if (exec.status === 'error') {
           const fullExec = await request(`/executions/${exec.id}`);
           console.log(`Execution ${exec.id} Error:`);
-          console.log(JSON.stringify(fullExec.data, null, 2).substring(0, 1000));
+          const str = JSON.stringify(fullExec, null, 2);
+          console.log(str ? str.substring(0, 5000) : 'Undefined execution data');
         }
       }
     } else {
