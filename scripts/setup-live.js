@@ -36,11 +36,13 @@ async function main() {
   });
 
   const createData = await createRes.json();
+  const errorMsg = createData.message || createData.response?.message || '';
+  const errorStr = Array.isArray(errorMsg) ? errorMsg.join(' ') : String(errorMsg);
   if (createRes.ok) {
     console.log(`✔ Instância "${instance}" criada com sucesso!`);
   } else {
     // Se já existe, tudo bem
-    if (createData.message && createData.message.includes('already exists')) {
+    if (errorStr.toLowerCase().includes('already exists') || errorStr.toLowerCase().includes('already in use')) {
       console.log(`✔ Instância "${instance}" já existe.`);
     } else {
       throw new Error(`Falha ao criar instância: ${JSON.stringify(createData)}`);
