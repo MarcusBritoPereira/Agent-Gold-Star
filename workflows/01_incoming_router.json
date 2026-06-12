@@ -43,7 +43,7 @@
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.5,
       "position": [
-        440,
+        1240,
         300
       ],
       "credentials": {
@@ -80,7 +80,7 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
       "position": [
-        650,
+        1450,
         300
       ]
     },
@@ -97,7 +97,7 @@
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.5,
       "position": [
-        860,
+        1660,
         220
       ],
       "credentials": {
@@ -120,7 +120,7 @@
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.5,
       "position": [
-        1080,
+        1880,
         220
       ],
       "credentials": {
@@ -152,8 +152,106 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        1300,
+        2100,
         220
+      ]
+    },
+    {
+      "parameters": {
+        "dataType": "string",
+        "value1": "={{ $json.message_type }}",
+        "rules": {
+          "rules": [
+            {
+              "operation": "regex",
+              "value2": "^(audioMessage|extendedAudioMessage)$"
+            }
+          ]
+        },
+        "fallbackOutput": 1
+      },
+      "id": "gold-star-audio-switch",
+      "name": "Is Audio?",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 1,
+      "position": [
+        440,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.EVOLUTION_API_URL + '/chat/getBase64FromMediaMessage/' + $env.EVOLUTION_INSTANCE }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $env.EVOLUTION_API_KEY }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"message\": {{ JSON.stringify($('Normalize and Validate Event').item.json.raw_payload.data.message) }}\n}",
+        "options": {}
+      },
+      "id": "gold-star-audio-http",
+      "name": "Get Audio Base64",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        660,
+        100
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const base64 = $json.base64;\nconst original = $('Normalize and Validate Event').item.json;\nif (!base64) return [{ json: original }];\nreturn [{\n  json: original,\n  binary: {\n    data: {\n      data: base64,\n      mimeType: 'audio/ogg',\n      fileName: 'audio.ogg'\n    }\n  }\n}];"
+      },
+      "id": "gold-star-audio-code",
+      "name": "Prepare Audio Binary",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        860,
+        100
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "audio",
+        "operation": "transcribe",
+        "binaryPropertyName": "data",
+        "options": {}
+      },
+      "id": "gold-star-audio-whisper",
+      "name": "OpenAI Whisper",
+      "type": "n8n-nodes-base.openAi",
+      "typeVersion": 1,
+      "position": [
+        1060,
+        100
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": "3GyFEUPzMb0NvMtk",
+          "name": "Gold Star OpenAI API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const original = $('Normalize and Validate Event').item.json;\noriginal.message = $json.text || '';\nreturn [{ json: original }];"
+      },
+      "id": "gold-star-audio-merge",
+      "name": "Inject Transcription",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1260,
+        100
       ]
     }
   ],
@@ -173,7 +271,7 @@
       "main": [
         [
           {
-            "node": "Register Inbound Event",
+            "node": "Is Audio?",
             "type": "main",
             "index": 0
           }
@@ -218,6 +316,68 @@
         [
           {
             "node": "Call Intent Workflow",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Audio?": {
+      "main": [
+        [
+          {
+            "node": "Get Audio Base64",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Register Inbound Event",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Audio Base64": {
+      "main": [
+        [
+          {
+            "node": "Prepare Audio Binary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Audio Binary": {
+      "main": [
+        [
+          {
+            "node": "OpenAI Whisper",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Whisper": {
+      "main": [
+        [
+          {
+            "node": "Inject Transcription",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Inject Transcription": {
+      "main": [
+        [
+          {
+            "node": "Register Inbound Event",
             "type": "main",
             "index": 0
           }
