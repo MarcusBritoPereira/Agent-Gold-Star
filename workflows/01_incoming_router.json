@@ -35,7 +35,7 @@
         "operation": "executeQuery",
         "query": "WITH inserted AS (\n  INSERT INTO inbound_events(event_id, phone_number, payload)\n  VALUES ($1, $2, $3::jsonb)\n  ON CONFLICT (event_id) DO NOTHING\n  RETURNING event_id\n)\nSELECT EXISTS(SELECT 1 FROM inserted) AS is_new;",
         "options": {
-          "queryReplacement": "={{ [$('Normalize and Validate Event').item.json.event_id, $('Normalize and Validate Event').item.json.phone_number, JSON.stringify($('Normalize and Validate Event').item.json.raw_payload)] }}"
+          "queryReplacement": "={{ [$('Normalize and Validate Event').first().json.event_id, $('Normalize and Validate Event').first().json.phone_number, JSON.stringify($('Normalize and Validate Event').first().json.raw_payload)] }}"
         }
       },
       "id": "gold-star-0003",
@@ -89,7 +89,7 @@
         "operation": "executeQuery",
         "query": "INSERT INTO users(phone_number, full_name)\nVALUES ($1, NULLIF($2, ''))\nON CONFLICT (phone_number) DO UPDATE SET full_name = COALESCE(NULLIF(EXCLUDED.full_name, ''), users.full_name)\nRETURNING *;",
         "options": {
-          "queryReplacement": "={{ [$('Normalize and Validate Event').item.json.phone_number, $('Normalize and Validate Event').item.json.full_name] }}"
+          "queryReplacement": "={{ [$('Normalize and Validate Event').first().json.phone_number, $('Normalize and Validate Event').first().json.full_name] }}"
         }
       },
       "id": "gold-star-0006",
@@ -145,7 +145,7 @@
         "sendBody": true,
         "contentType": "raw",
         "rawContentType": "application/json",
-        "body": "={{ JSON.stringify({ session_id: $json.id, user_id: $json.user_id, phone_number: $('Normalize and Validate Event').item.json.phone_number, message: $('Normalize and Validate Event').item.json.message, message_type: $('Normalize and Validate Event').item.json.message_type, current_state: $json.current_state, state_payload: $json.state_payload }) }}"
+        "body": "={{ JSON.stringify({ session_id: $json.id, user_id: $json.user_id, phone_number: $('Normalize and Validate Event').first().json.phone_number, message: $('Normalize and Validate Event').first().json.message, message_type: $('Normalize and Validate Event').first().json.message_type, current_state: $json.current_state, state_payload: $json.state_payload }) }}"
       },
       "id": "gold-star-0008",
       "name": "Call Intent Workflow",
@@ -194,7 +194,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={\n  \"message\": {\n    \"key\": {{ JSON.stringify($('Normalize and Validate Event').item.json.raw_payload.data.key) }}\n  }\n}",
+        "jsonBody": "={\n  \"message\": {\n    \"key\": {{ JSON.stringify($('Normalize and Validate Event').first().json.raw_payload.data.key) }}\n  }\n}",
         "options": {}
       },
       "id": "gold-star-audio-http",
@@ -243,7 +243,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const original = $('Normalize and Validate Event').item.json;\noriginal.message = $json.text || '';\nreturn [{ json: original }];"
+        "jsCode": "const original = $('Normalize and Validate Event').first().json;\noriginal.message = $json.text || '';\nreturn [{ json: original }];"
       },
       "id": "gold-star-audio-merge",
       "name": "Inject Transcription",

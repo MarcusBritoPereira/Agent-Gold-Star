@@ -35,7 +35,7 @@
         "operation": "executeQuery",
         "query": "WITH inserted AS (INSERT INTO payment_events(gateway_event_id,order_id,event_type,payload) VALUES($1,$2,$3,$4::jsonb) ON CONFLICT DO NOTHING RETURNING 1) SELECT EXISTS(SELECT 1 FROM inserted) AS is_new;",
         "options": {
-          "queryReplacement": "={{ [$('Validate and Normalize Payment').item.json.gateway_event_id, $('Validate and Normalize Payment').item.json.order_id, $('Validate and Normalize Payment').item.json.event_type, JSON.stringify($('Validate and Normalize Payment').item.json.raw_payload)] }}"
+          "queryReplacement": "={{ [$('Validate and Normalize Payment').first().json.gateway_event_id, $('Validate and Normalize Payment').first().json.order_id, $('Validate and Normalize Payment').first().json.event_type, JSON.stringify($('Validate and Normalize Payment').first().json.raw_payload)] }}"
         }
       },
       "id": "gold-star-0055",
@@ -94,7 +94,7 @@
           "conditions": [
             {
               "id": "gold-star-0058",
-              "leftValue": "={{ $('Validate and Normalize Payment').item.json.approved }}",
+              "leftValue": "={{ $('Validate and Normalize Payment').first().json.approved }}",
               "rightValue": "",
               "operator": {
                 "type": "boolean",
@@ -120,7 +120,7 @@
         "operation": "executeQuery",
         "query": "UPDATE conversational_sessions SET current_state='PAID' WHERE state_payload->>'order_id'=$1 AND current_state='EXPECTING_PAYMENT' RETURNING id,state_payload;",
         "options": {
-          "queryReplacement": "={{ [$('Validate and Normalize Payment').item.json.order_id] }}"
+          "queryReplacement": "={{ [$('Validate and Normalize Payment').first().json.order_id] }}"
         }
       },
       "id": "gold-star-0060",
@@ -153,7 +153,7 @@
         "sendBody": true,
         "contentType": "raw",
         "rawContentType": "application/json",
-        "body": "={{ JSON.stringify({ session_id: $json.id, order_id: $('Validate and Normalize Payment').item.json.order_id }) }}"
+        "body": "={{ JSON.stringify({ session_id: $json.id, order_id: $('Validate and Normalize Payment').first().json.order_id }) }}"
       },
       "id": "gold-star-0061",
       "name": "Call Ticket Delivery",
@@ -174,7 +174,7 @@
           "conditions": [
             {
               "id": "gold-star-0062",
-              "leftValue": "={{ $('Validate and Normalize Payment').item.json.expired }}",
+              "leftValue": "={{ $('Validate and Normalize Payment').first().json.expired }}",
               "rightValue": "",
               "operator": {
                 "type": "boolean",
@@ -200,7 +200,7 @@
         "operation": "executeQuery",
         "query": "UPDATE conversational_sessions SET current_state='PAYMENT_EXPIRED' WHERE state_payload->>'order_id'=$1 AND current_state='EXPECTING_PAYMENT' RETURNING id,user_id;",
         "options": {
-          "queryReplacement": "={{ [$('Validate and Normalize Payment').item.json.order_id] }}"
+          "queryReplacement": "={{ [$('Validate and Normalize Payment').first().json.order_id] }}"
         }
       },
       "id": "gold-star-0064",
@@ -281,7 +281,7 @@
         "operation": "executeQuery",
         "query": "UPDATE payment_events SET processing_status='PROCESSED', processed_at=now() WHERE gateway_event_id=$1;",
         "options": {
-          "queryReplacement": "={{ [$('Validate and Normalize Payment').item.json.gateway_event_id] }}"
+          "queryReplacement": "={{ [$('Validate and Normalize Payment').first().json.gateway_event_id] }}"
         }
       },
       "id": "gold-star-0067",

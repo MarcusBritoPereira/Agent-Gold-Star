@@ -84,7 +84,7 @@
         "operation": "executeQuery",
         "query": "UPDATE conversational_sessions SET current_state='COMPLETED',state_payload=state_payload || $2::jsonb WHERE id=$1 AND current_state='PAID' RETURNING *;",
         "options": {
-          "queryReplacement": "={{ [$('Build Seat Allocation').item.json.session_id, JSON.stringify({ voucher_url: $('Build Seat Allocation').item.json.voucher_url, delivered_at: new Date().toISOString() })] }}"
+          "queryReplacement": "={{ [$('Build Seat Allocation').first().json.session_id, JSON.stringify({ voucher_url: $('Build Seat Allocation').first().json.voucher_url, delivered_at: new Date().toISOString() })] }}"
         }
       },
       "id": "gold-star-0073",
@@ -126,7 +126,7 @@
         "sendBody": true,
         "contentType": "raw",
         "rawContentType": "application/json",
-        "body": "={{ JSON.stringify({ number: $('Build Seat Allocation').item.json.phone_number, text: '🎉 Compra confirmada, ' + $('Build Seat Allocation').item.json.full_name + '! Seu bilhete está disponível em: ' + $('Build Seat Allocation').item.json.voucher_url }) }}"
+        "body": "={{ JSON.stringify({ number: $('Build Seat Allocation').first().json.phone_number, text: '🎉 Compra confirmada, ' + $('Build Seat Allocation').first().json.full_name + '! Seu bilhete está disponível em: ' + $('Build Seat Allocation').first().json.voucher_url }) }}"
       },
       "id": "gold-star-0074",
       "name": "Send Voucher",

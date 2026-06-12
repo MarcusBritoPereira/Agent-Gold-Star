@@ -81,7 +81,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const source=$json; const request=$('Build Order Payload').item.json; const orderId=source.id??source.order_id; const paymentLink=source.payment_link??source.payment_url; if(!orderId||!paymentLink) throw new Error('Backend não retornou order_id e payment_link'); return [{json:{...request,order_id:String(orderId),payment_link:String(paymentLink)}}];"
+        "jsCode": "const source=$json; const request=$('Build Order Payload').first().json; const orderId=source.id??source.order_id; const paymentLink=source.payment_link??source.payment_url; if(!orderId||!paymentLink) throw new Error('Backend não retornou order_id e payment_link'); return [{json:{...request,order_id:String(orderId),payment_link:String(paymentLink)}}];"
       },
       "id": "gold-star-0049",
       "name": "Validate Order Response",
@@ -139,7 +139,7 @@
         "sendBody": true,
         "contentType": "raw",
         "rawContentType": "application/json",
-        "body": "={{ JSON.stringify({ number: $('Validate Order Response').item.json.phone_number, text: 'Pedido criado com sucesso. Para concluir a compra, pague pelo link: ' + $('Validate Order Response').item.json.payment_link }) }}"
+        "body": "={{ JSON.stringify({ number: $('Validate Order Response').first().json.phone_number, text: 'Pedido criado com sucesso. Para concluir a compra, pague pelo link: ' + $('Validate Order Response').first().json.payment_link }) }}"
       },
       "id": "gold-star-0051",
       "name": "Send Payment Link",
