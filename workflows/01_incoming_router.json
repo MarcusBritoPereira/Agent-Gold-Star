@@ -208,7 +208,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const base64 = $json.base64;\nconst original = $('Normalize and Validate Event').item.json;\nif (!base64) return [{ json: original }];\nreturn [{\n  json: original,\n  binary: {\n    data: {\n      data: base64.replace(/^data:[^;]+;base64,/, ''),\n      mimeType: 'audio/ogg',\n      fileName: 'audio.ogg'\n    }\n  }\n}];"
+        "jsCode": "const items = $input.all();\nconst original = $('Normalize and Validate Event').first().json;\nfor (const item of items) {\n  const base64 = item.json.base64;\n  if (base64) {\n    const cleanBase64 = base64.replace(/^data:[^;]+;base64,/, '');\n    const buffer = Buffer.from(cleanBase64, 'base64');\n    item.json = original;\n    item.binary = {\n      data: await this.helpers.prepareBinaryData(buffer, 'audio.ogg', 'audio/ogg')\n    };\n  } else {\n    item.json = original;\n  }\n}\nreturn items;"
       },
       "id": "gold-star-audio-code",
       "name": "Prepare Audio Binary",
