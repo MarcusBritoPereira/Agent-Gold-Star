@@ -208,7 +208,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const base64 = $json.base64;\nconst original = $('Normalize and Validate Event').item.json;\nif (!base64) return [{ json: original }];\nreturn [{\n  json: original,\n  binary: {\n    data: {\n      data: base64,\n      mimeType: 'audio/ogg',\n      fileName: 'audio.ogg'\n    }\n  }\n}];"
+        "jsCode": "const base64 = $json.base64;\nconst original = $('Normalize and Validate Event').item.json;\nif (!base64) return [{ json: original }];\nreturn [{\n  json: original,\n  binary: {\n    data: {\n      data: base64.replace(/^data:[^;]+;base64,/, ''),\n      mimeType: 'audio/ogg',\n      fileName: 'audio.ogg'\n    }\n  }\n}];"
       },
       "id": "gold-star-audio-code",
       "name": "Prepare Audio Binary",
