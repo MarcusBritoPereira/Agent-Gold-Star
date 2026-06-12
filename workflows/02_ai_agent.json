@@ -45,7 +45,7 @@
         "promptType": "define",
         "text": "={{ $('Agent Webhook').item.json.body.message }}",
         "options": {
-          "systemMessage": "Você é o assistente virtual de vendas da empresa de viagens hidroviárias Gold Star. Seu objetivo é ajudar o usuário a encontrar viagens e comprar passagens de forma conversacional e amigável.\n\nRegras:\n1. Colete a Cidade de Origem e a Cidade de Destino.\n2. Chame a ferramenta Buscar_Rotas informando a origem para encontrar as opções disponíveis e os seus IDs (route_id). Se a origem não retornar nada, informe o usuário.\n3. Apresente as opções de rotas ao usuário, informando os horários e preços. Pergunte em qual data ele deseja viajar (o formato da data para a API deve ser AAAA-MM-DD).\n4. Com o route_id e a data escolhida, chame a ferramenta Consultar_Assentos para verificar se há vagas (available_seats > 0). Essa ferramenta também retorna o trip_id.\n5. Se houver vagas, informe que está disponível e peça os dados do passageiro: CPF, Nome Completo e Data de Nascimento.\n6. Com os dados completos (route_id, trip_id, data, preço, nome, cpf e data de nascimento), chame a ferramenta Gerar_Pagamento.\n7. Entregue o Link de Pagamento (payment_link) gerado ao usuário de forma clara.\n8. Seja gentil, persuasivo e use emojis moderadamente. Responda apenas com o texto final que será enviado ao cliente no WhatsApp."
+          "systemMessage": "={{ 'Você é um(a) especialista caloroso(a) e paciente em vendas de passagens hidroviárias da empresa Gold Star. Você atende todo tipo de público, desde crianças até idosos, então sua linguagem deve ser extremamente clara, acolhedora, humana e SEM termos técnicos.\\n\\nHoje é ' + $now.setZone('America/Sao_Paulo').toFormat('dd/MM/yyyy') + ' (Horário de Brasília).\\n\\nREGRAS CRÍTICAS DE UX:\\n1. NUNCA peça para o usuário digitar informações em um formato específico (como AAAA-MM-DD ou incluir traços no CPF). Faça perguntas naturais (ex: \"Qual dia você prefere viajar?\", \"Qual é a sua data de nascimento?\"). VOCÊ (a IA) é quem deve formatar a data por trás dos panos antes de chamar as ferramentas.\\n2. Faça uma pergunta por vez. Não sobrecarregue o usuário com listas longas de perguntas.\\n3. Se o cliente falar datas relativas (\"amanhã\", \"próxima segunda\"), use a data de hoje para deduzir a data exata e converta para YYYY-MM-DD antes de consultar as ferramentas.\\n4. Limpe caracteres especiais do CPF silenciosamente.\\n\\nFLUXO DE VENDAS:\\n1. Colete a Origem e Destino com empatia.\\n2. Chame Buscar_Rotas com a origem. Liste as opções de horários e preços de forma bem organizada e bonita.\\n3. Pergunte quando a pessoa quer viajar.\\n4. Com a data, chame Consultar_Assentos.\\n5. Se houver vaga, comemore levemente e peça o Nome Completo.\\n6. Depois, peça o CPF do passageiro.\\n7. Depois, peça a Data de Nascimento.\\n8. Com os dados, chame Gerar_Pagamento.\\n9. Entregue o link de pagamento com clareza e se despeça educadamente.' }}"
         }
       },
       "id": "gold-star-agent-node",
@@ -60,21 +60,21 @@
     },
     {
       "parameters": {
-        "modelName": "models/gemini-2.5-flash",
+        "model": "gpt-4o-mini",
         "options": {}
       },
-      "id": "gold-star-agent-gemini",
-      "name": "Gemini Chat Model",
-      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "id": "gold-star-agent-openai",
+      "name": "OpenAI Chat Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
       "typeVersion": 1,
       "position": [
         300,
         500
       ],
       "credentials": {
-        "geminiApi": {
-          "id": "__GEMINI_CREDENTIAL_ID__",
-          "name": "__GEMINI_CREDENTIAL_NAME__"
+        "openAiApi": {
+          "id": "__OPENAI_CREDENTIAL_ID__",
+          "name": "__OPENAI_CREDENTIAL_NAME__"
         }
       }
     },
@@ -113,7 +113,7 @@
           ]
         },
         "method": "GET",
-        "url": "https://embarcar-e83ea296df06.herokuapp.com/api/routes/show/",
+        "url": "={{ $env.BACKEND_BASE_URL + '/api/routes/show/' }}",
         "sendQuery": true,
         "specifyQuery": "json",
         "jsonQuery": "{\n  \"q[origin_cont]\": \"{origin}\"\n}"
@@ -140,13 +140,13 @@
             },
             {
               "name": "date",
-              "description": "Data da viagem no formato YYYY-MM-DD",
+              "description": "Você deve obrigatoriamente converter e enviar a data no formato YYYY-MM-DD.",
               "type": "string"
             }
           ]
         },
         "method": "GET",
-        "url": "https://embarcar-e83ea296df06.herokuapp.com/api/routes/available_seats/",
+        "url": "={{ $env.BACKEND_BASE_URL + '/api/routes/available_seats/' }}",
         "sendQuery": true,
         "specifyQuery": "json",
         "jsonQuery": "{\n  \"web\": \"true\",\n  \"route_id\": {route_id},\n  \"date\": \"{date}\"\n}"
@@ -178,7 +178,7 @@
             },
             {
               "name": "date",
-              "description": "Data no formato YYYY-MM-DD",
+              "description": "Você deve enviar a data formatada como YYYY-MM-DD.",
               "type": "string"
             },
             {
@@ -198,13 +198,13 @@
             },
             {
               "name": "passenger_birthday",
-              "description": "Data de nascimento no formato YYYY-MM-DD",
+              "description": "Você deve converter e enviar a data de nascimento como YYYY-MM-DD.",
               "type": "string"
             }
           ]
         },
         "method": "POST",
-        "url": "https://embarcar-e83ea296df06.herokuapp.com/api/orders/create",
+        "url": "={{ $env.BACKEND_BASE_URL + '/api/orders/create' }}",
         "sendBody": true,
         "specifyBody": "json",
         "jsonBody": "={\n  \"route_id\": {route_id},\n  \"trip_id\": {trip_id},\n  \"date\": \"{date}\",\n  \"payment_method\": \"PIX\",\n  \"name\": \"{passenger_name}\",\n  \"phone\": \"{{ $('Agent Webhook').item.json.body.phone_number }}\",\n  \"customers\": { \"1\": \"{passenger_name}\" },\n  \"documents\": { \"1\": \"{passenger_cpf}\" },\n  \"document_types\": { \"1\": \"cpf\" },\n  \"birthdays\": [\"{passenger_birthday}\"],\n  \"data\": \"[{\\\"comodity\\\":\\\"Assento\\\",\\\"field\\\":\\\"speed_boat_price\\\",\\\"customer_fields\\\":1,\\\"min_customer_fields\\\":1,\\\"price\\\":{price},\\\"tax\\\":\\\"5.5\\\",\\\"quantity\\\":1}]\"\n}"
@@ -344,7 +344,7 @@
         ]
       ]
     },
-    "Gemini Chat Model": {
+    "OpenAI Chat Model": {
       "ai_languageModel": [
         [
           {

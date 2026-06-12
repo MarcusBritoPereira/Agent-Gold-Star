@@ -33,11 +33,11 @@ function deployableWorkflow(workflow, config) {
       credential.id = config.credentialId;
       credential.name = config.credentialName;
     }
-    if (workflowNode.credentials?.geminiApi || workflowNode.credentials?.googlePalmApi) {
+    if (workflowNode.credentials?.openAiApi) {
       workflowNode.credentials = {
-        googlePalmApi: {
-          id: process.env.GEMINI_CREDENTIAL_ID,
-          name: "Gold Star Gemini API"
+        openAiApi: {
+          id: process.env.OPENAI_CREDENTIAL_ID,
+          name: "Gold Star OpenAI"
         }
       };
     }

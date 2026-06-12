@@ -5,14 +5,29 @@ const { client, deployableWorkflow } = require('./scripts/lib/n8n');
 async function main() {
   const { config, request } = client();
   
-  // Find the gemini credential
+  // Find or create the openai credential
   const creds = await request('/credentials');
-  const geminiCred = creds.data?.find(c => c.type === 'googlePalmApi' || c.name.toLowerCase().includes('gemini'));
-  if (geminiCred) {
-    process.env.GEMINI_CREDENTIAL_ID = geminiCred.id;
-  } else {
-    throw new Error('Please create a Google Gemini credential in the N8N UI before deploying!');
+  let openaiCred = creds.data?.find(c => c.type === 'openAiApi' || c.name.toLowerCase().includes('openai'));
+  if (!openaiCred) {
+    if (process.env.OPENAI_API_KEY) {
+      console.log('Creating OpenAI credential in n8n...');
+      openaiCred = await request('/credentials', {
+        method: 'POST',
+        body: JSON.stringify({
+          name: 'Gold Star OpenAI API',
+          type: 'openAiApi',
+          data: { 
+            apiKey: process.env.OPENAI_API_KEY,
+            header: false,
+            allowedHttpRequestDomains: "none"
+          }
+        })
+      });
+    } else {
+      throw new Error('Please create an OpenAI credential in the N8N UI or set OPENAI_API_KEY in .env before deploying!');
+    }
   }
+  process.env.OPENAI_CREDENTIAL_ID = openaiCred.id;
   const directory = path.join(__dirname, 'workflows');
   const files = fs.readdirSync(directory).filter((file) => /^\d{2}_.+\.json$/.test(file)).sort();
   const listed = await request('/workflows?limit=250');
