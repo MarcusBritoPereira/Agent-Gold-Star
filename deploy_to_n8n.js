@@ -18,8 +18,7 @@ async function main() {
           type: 'openAiApi',
           data: { 
             apiKey: process.env.OPENAI_API_KEY,
-            header: false,
-            allowedHttpRequestDomains: "none"
+            header: false
           }
         })
       });
