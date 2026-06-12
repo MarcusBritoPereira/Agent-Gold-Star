@@ -33,6 +33,18 @@ const server = http.createServer(async (request, response) => {
   if (request.method === 'POST' && url.pathname === '/api/orders/create') {
     const input = await body(request);
     const id = input.external_reference || randomUUID();
+    
+    let priceCents = input.price_cents || 5000;
+    if (!input.price_cents) {
+      if (input.price) priceCents = input.price * 100;
+      else if (input.data) {
+        try {
+          const arr = typeof input.data === 'string' ? JSON.parse(input.data) : input.data;
+          if (arr[0] && arr[0].price) priceCents = arr[0].price * 100;
+        } catch(e) {}
+      }
+    }
+
     let paymentLink = `http://localhost:${port}/pay/${id}`;
     let customerId = randomUUID();
 
@@ -63,7 +75,7 @@ const server = http.createServer(async (request, response) => {
             body: JSON.stringify({
               customer: customerId,
               billingType: 'PIX',
-              value: (input.price_cents || 5000) / 100,
+              value: priceCents / 100,
               dueDate: new Date(Date.now() + 86400000).toISOString().split('T')[0],
               description: `Passagem: ${input.origin || ''} -> ${input.destination || ''}`,
               externalReference: id
