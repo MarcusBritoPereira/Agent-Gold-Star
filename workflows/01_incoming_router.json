@@ -194,7 +194,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={\n  \"message\": {{ JSON.stringify($('Normalize and Validate Event').item.json.raw_payload.data.message) }}\n}",
+        "jsonBody": "={\n  \"message\": {\n    \"key\": {{ JSON.stringify($('Normalize and Validate Event').item.json.raw_payload.data.key) }}\n  }\n}",
         "options": {}
       },
       "id": "gold-star-audio-http",
