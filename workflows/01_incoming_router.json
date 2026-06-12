@@ -221,25 +221,42 @@
     },
     {
       "parameters": {
-        "resource": "audio",
-        "operation": "transcribe",
-        "binaryPropertyName": "data",
+        "method": "POST",
+        "url": "https://api.openai.com/v1/audio/transcriptions",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "={{ 'Bearer ' + $env.OPENAI_API_KEY }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "multipart-form-data",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "model",
+              "value": "whisper-1"
+            },
+            {
+              "parameterType": "formBinaryData",
+              "name": "file",
+              "inputDataFieldName": "data"
+            }
+          ]
+        },
         "options": {}
       },
       "id": "gold-star-audio-whisper",
       "name": "OpenAI Whisper",
-      "type": "n8n-nodes-base.openAi",
-      "typeVersion": 1,
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
       "position": [
         1060,
         100
-      ],
-      "credentials": {
-        "openAiApi": {
-          "id": "3GyFEUPzMb0NvMtk",
-          "name": "Gold Star OpenAI API"
-        }
-      }
+      ]
     },
     {
       "parameters": {
