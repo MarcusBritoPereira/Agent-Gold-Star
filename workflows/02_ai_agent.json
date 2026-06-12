@@ -207,7 +207,7 @@
         "url": "={{ $env.BACKEND_BASE_URL + '/api/orders/create' }}",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={\n  \"route_id\": {route_id},\n  \"trip_id\": {trip_id},\n  \"date\": \"{date}\",\n  \"payment_method\": \"PIX\",\n  \"name\": \"{passenger_name}\",\n  \"phone\": \"{{ $('Agent Webhook').item.json.body.phone_number }}\",\n  \"customers\": { \"1\": \"{passenger_name}\" },\n  \"documents\": { \"1\": \"{passenger_cpf}\" },\n  \"document_types\": { \"1\": \"cpf\" },\n  \"birthdays\": [\"{passenger_birthday}\"],\n  \"data\": \"[{\\\"comodity\\\":\\\"Assento\\\",\\\"field\\\":\\\"speed_boat_price\\\",\\\"customer_fields\\\":1,\\\"min_customer_fields\\\":1,\\\"price\\\":{price},\\\"tax\\\":\\\"5.5\\\",\\\"quantity\\\":1}]\"\n}"
+        "jsonBody": "={\n  \"route_id\": {route_id},\n  \"trip_id\": {trip_id},\n  \"date\": \"{date}\",\n  \"payment_method\": \"PIX\",\n  \"name\": \"{passenger_name}\",\n  \"phone\": \"{{ $('Agent Webhook').item.json.body.phone_number }}\",\n  \"customer\": { \"name\": \"{passenger_name}\", \"cpf\": \"{passenger_cpf}\", \"phone\": \"{{ $('Agent Webhook').item.json.body.phone_number }}\" },\n  \"customers\": { \"1\": \"{passenger_name}\" },\n  \"documents\": { \"1\": \"{passenger_cpf}\" },\n  \"document_types\": { \"1\": \"cpf\" },\n  \"birthdays\": [\"{passenger_birthday}\"],\n  \"data\": \"[{\\\"comodity\\\":\\\"Assento\\\",\\\"field\\\":\\\"speed_boat_price\\\",\\\"customer_fields\\\":1,\\\"min_customer_fields\\\":1,\\\"price\\\":{price},\\\"tax\\\":\\\"5.5\\\",\\\"quantity\\\":1}]\"\n}"
       },
       "id": "gold-star-agent-tool-pagamento",
       "name": "Gerar_Pagamento",
