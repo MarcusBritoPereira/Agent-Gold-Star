@@ -136,7 +136,7 @@
             {
               "name": "route_id",
               "description": "O ID da rota (route_id) escolhida",
-              "type": "number"
+              "type": "string"
             },
             {
               "name": "date",
@@ -169,12 +169,12 @@
             {
               "name": "route_id",
               "description": "ID da Rota",
-              "type": "number"
+              "type": "string"
             },
             {
               "name": "trip_id",
               "description": "ID da Viagem",
-              "type": "number"
+              "type": "string"
             },
             {
               "name": "date",
