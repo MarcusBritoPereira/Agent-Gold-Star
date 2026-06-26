@@ -5,7 +5,7 @@ const root = path.join(__dirname, '..');
 const workflowDirectory = path.join(root, 'workflows');
 const files = fs.readdirSync(workflowDirectory).filter((file) => /^\d{2}_.+\.json$/.test(file)).sort();
 const errors = [];
-if (files.length !== 8) errors.push(`expected 8 production workflows, found ${files.length}`);
+if (files.length !== 6) errors.push(`expected 6 production workflows, found ${files.length}`);
 for (const file of files) {
   const workflow = JSON.parse(fs.readFileSync(path.join(workflowDirectory, file), 'utf8'));
   const nodesByName = new Map((workflow.nodes || []).map((item) => [item.name, item]));
