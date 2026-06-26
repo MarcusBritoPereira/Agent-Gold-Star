@@ -146,7 +146,7 @@
           ]
         },
         "method": "GET",
-        "url": "={{ $env.BACKEND_BASE_URL + '/api/routes/available_seats/' }}",
+        "url": "={{ $env.INTERNAL_N8N_WEBHOOK_URL + '/webhook/consultar-assentos?session_id=' + $('Agent Webhook').first().json.body.session_id }}",
         "sendQuery": true,
         "specifyQuery": "json",
         "jsonQuery": "{\n  \"web\": \"true\",\n  \"route_id\": {route_id},\n  \"date\": \"{date}\"\n}"
