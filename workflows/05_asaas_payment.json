@@ -122,7 +122,7 @@
           "string": [
             {
               "name": "payment_link",
-              "value": "={{ $json.payment_link }}"
+              "value": "={{ $json.state_payload.payment_link || $('Validate Order Response').first().json.payment_link }}"
             }
           ]
         },
