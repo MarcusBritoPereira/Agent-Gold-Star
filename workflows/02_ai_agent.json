@@ -130,7 +130,7 @@
     {
       "parameters": {
         "name": "Consultar_Assentos",
-        "description": "Verifica a disponibilidade de assentos para uma rota e data. Retorna o trip_id e a quantidade de vagas.",
+        "description": "Verifica a disponibilidade de assentos para uma rota e data. IMPORTANTE: O JSON de retorno tem uma lista gigante 'seats_by_position'. IGNORE a lista e olhe EXCLUSIVAMENTE para a propriedade 'available_seats' no final do JSON. Se available_seats > 0, há vagas e você deve prosseguir, guardando o trip_id retornado.",
         "placeholderDefinitions": {
           "values": [
             {
@@ -163,7 +163,7 @@
     {
       "parameters": {
         "name": "Gerar_Pagamento",
-        "description": "Gera a ordem de pagamento. Requer route_id, trip_id, date, price, passenger_cpf, passenger_name, passenger_birthday e seat_number.",
+        "description": "Gera a ordem de pagamento. Requer route_id, trip_id, date, price, passenger_cpf, passenger_name, passenger_birthday.",
         "placeholderDefinitions": {
           "values": [
             {
@@ -200,19 +200,14 @@
               "name": "passenger_birthday",
               "description": "Você deve converter e enviar a data de nascimento como YYYY-MM-DD.",
               "type": "string"
-            },
-            {
-              "name": "seat_number",
-              "description": "Número do assento escolhido pelo passageiro. Use um dos available_seat_numbers retornados em Consultar_Assentos.",
-              "type": "number"
             }
           ]
         },
         "method": "POST",
-        "url": "={{ $env.BACKEND_BASE_URL + '/api/orders/create' }}",
+        "url": "={{ $env.INTERNAL_N8N_WEBHOOK_URL + '/webhook/create-payment' }}",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={\n  \"route_id\": {route_id},\n  \"trip_id\": {trip_id},\n  \"date\": \"{date}\",\n  \"payment_method\": \"PIX\",\n  \"name\": \"{passenger_name}\",\n  \"phone\": \"{{ $('Agent Webhook').first().json.body.phone_number }}\",\n  \"customer\": { \"name\": \"{passenger_name}\", \"cpf\": \"{passenger_cpf}\", \"phone\": \"{{ $('Agent Webhook').first().json.body.phone_number }}\" },\n  \"customers\": { \"1\": \"{passenger_name}\" },\n  \"documents\": { \"1\": \"{passenger_cpf}\" },\n  \"document_types\": { \"1\": \"cpf\" },\n  \"birthdays\": [\"{passenger_birthday}\"],\n  \"seat_numbers\": [{seat_number}],\n  \"data\": \"[{\\\"comodity\\\":\\\"Assento\\\",\\\"field\\\":\\\"speed_boat_price\\\",\\\"customer_fields\\\":1,\\\"min_customer_fields\\\":1,\\\"price\\\":{price},\\\"tax\\\":\\\"9\\\",\\\"quantity\\\":1}]\"\n}"
+        "jsonBody": "={\n  \"session_id\": {{ $('Agent Webhook').first().json.body.session_id }},\n  \"route_id\": \"{route_id}\",\n  \"trip_id\": \"{trip_id}\",\n  \"date\": \"{date}\",\n  \"payment_method\": \"PIX\",\n  \"name\": \"{passenger_name}\",\n  \"phone\": \"{{ $('Agent Webhook').first().json.body.phone_number }}\",\n  \"customer\": { \"name\": \"{passenger_name}\", \"cpf\": \"{passenger_cpf}\", \"phone\": \"{{ $('Agent Webhook').first().json.body.phone_number }}\" },\n  \"customers\": { \"1\": \"{passenger_name}\" },\n  \"documents\": { \"1\": \"{passenger_cpf}\" },\n  \"document_types\": { \"1\": \"cpf\" },\n  \"birthdays\": [\"{passenger_birthday}\"],\n  \"seat_numbers\": [{seat_number}],\n  \"data\": \"[{\\\"comodity\\\":\\\"Assento\\\",\\\"field\\\":\\\"speed_boat_price\\\",\\\"customer_fields\\\":1,\\\"min_customer_fields\\\":1,\\\"price\\\":{price},\\\"tax\\\":\\\"9\\\",\\\"quantity\\\":1}]\"\n}"
       },
       "id": "gold-star-agent-tool-pagamento",
       "name": "Gerar_Pagamento",
@@ -438,7 +433,8 @@
   "settings": {
     "executionOrder": "v1",
     "saveDataErrorExecution": "all",
-    "saveDataSuccessExecution": "none"
+    "saveDataSuccessExecution": "none",
+    "saveManualExecutions": false
   },
   "staticData": null,
   "tags": [],

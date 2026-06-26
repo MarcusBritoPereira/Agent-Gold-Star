@@ -42,14 +42,14 @@
     },
     {
       "parameters": {
-        "jsCode": "const p=$json.state_payload; const seat=p.seat_number??p.available_seat; if(!seat) throw new Error('Nenhuma poltrona disponível foi registrada'); return [{json:{session_id:$json.id,phone_number:$json.phone_number,full_name:p.passenger_name||$json.full_name||'Passageiro',order_id:p.order_id,allocation:{trip_id:p.trip_id,seat_numbers:[seat]},voucher_url:$env.PUBLIC_BACKEND_URL+'/orders/'+p.order_id}}];"
+        "jsCode": "\nconst ctx = $('Get Paid Order Context').first().json;\nconst p = ctx.state_payload;\nconst orderStatus = $('Get Order Status').first().json;\nconst seatsData = $('Get Available Seats').first().json;\n\nconst customerId = orderStatus.customers[0].id;\n\nlet availableSeatNumber = null;\nif (seatsData.seats_by_position) {\n    for (const col of seatsData.seats_by_position) {\n        for (const seat of col.seats) {\n            if (seat.status === 'text-info') {\n                availableSeatNumber = seat.number;\n                break;\n            }\n        }\n        if (availableSeatNumber) break;\n    }\n}\n\nif (!availableSeatNumber) throw new Error('Nenhuma poltrona disponível no mapa de assentos.');\n\nconst allocation = {\n    id: String(p.order_id),\n    order: {\n        trip_id: String(p.trip_id),\n        seat_numbers: \"[\" + availableSeatNumber + \"]\",\n        order_customers_attributes: {\n            \"0\": { id: String(customerId) }\n        }\n    }\n};\n\nreturn [{\n    json: {\n        session_id: ctx.id,\n        phone_number: ctx.phone_number,\n        full_name: ctx.full_name || 'Passageiro',\n        order_id: p.order_id,\n        allocation: allocation,\n        voucher_url: $env.PUBLIC_BACKEND_URL + '/orders/' + p.order_id\n    }\n}];\n"
       },
       "id": "gold-star-0071",
       "name": "Build Seat Allocation",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        460,
+        920,
         300
       ]
     },
@@ -75,7 +75,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        690,
+        1150,
         300
       ]
     },
@@ -92,7 +92,7 @@
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.5,
       "position": [
-        920,
+        1380,
         300
       ],
       "credentials": {
@@ -133,7 +133,37 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        1150,
+        1610,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $env.BACKEND_BASE_URL + '/orders/seats/' + $json.state_payload.order_id }}",
+        "options": {}
+      },
+      "id": "gold-star-new-01",
+      "name": "Get Order Status",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        460,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $env.BACKEND_BASE_URL + '/api/routes/available_seats/?web=true&route_id=' + $('Get Paid Order Context').first().json.state_payload.route_id + '&date=' + $('Get Paid Order Context').first().json.state_payload.travel_date }}",
+        "options": {}
+      },
+      "id": "gold-star-new-02",
+      "name": "Get Available Seats",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        690,
         300
       ]
     }
@@ -151,6 +181,28 @@
       ]
     },
     "Get Paid Order Context": {
+      "main": [
+        [
+          {
+            "node": "Get Order Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Order Status": {
+      "main": [
+        [
+          {
+            "node": "Get Available Seats",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Available Seats": {
       "main": [
         [
           {

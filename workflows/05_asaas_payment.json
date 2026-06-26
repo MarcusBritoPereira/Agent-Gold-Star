@@ -5,7 +5,7 @@
       "parameters": {
         "httpMethod": "POST",
         "path": "create-payment",
-        "responseMode": "onReceived",
+        "responseMode": "lastNode",
         "options": {}
       },
       "id": "gold-star-0045",
@@ -42,7 +42,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const p=$json.state_payload; return [{json:{session_id:$json.id,phone_number:$json.phone_number,order:{trip_id:p.trip_id,seat_number:p.available_seat,travel_date:p.travel_date,origin:p.origin,destination:p.destination,price_cents:p.price_cents,customer:{name:p.passenger_name||$json.full_name,cpf:p.passenger_cpf||$json.cpf,phone:$json.phone_number},external_reference:$json.id}}}];"
+        "jsCode": "const req = $('Payment Creation Webhook').first().json.body;\nconst user = $json || {};\n\nconst cpf = req.passenger_cpf || req.documents?.[\"1\"] || user.cpf || \"00000000000\";\nconst name = req.passenger_name || req.name || req.customers?.[\"1\"] || user.full_name || \"Passageiro\";\nconst phone = user.phone_number || req.phone || \"5593999999999\";\nconst price = Number(req.price || 0);\nconst tax = String(req.tax ?? \"0.0\");\nconst seatNumber = req.seat_number || (Array.isArray(req.seat_numbers) ? req.seat_numbers[0] : null);\n\nconst dataArray = [{\n  comodity: \"Assento\",\n  field: \"speed_boat_price\",\n  customer_fields: 1,\n  min_customer_fields: 1,\n  price: price,\n  tax: tax,\n  quantity: 1\n}];\n\nconst order = {\n  route_id: req.route_id,\n  trip_id: req.trip_id,\n  date: req.date,\n  payment_method: req.payment_method || \"PIX\",\n  name: name,\n  phone: phone,\n  customers: { \"1\": name },\n  documents: { \"1\": String(cpf).replace(/\\D/g, \"\") },\n  document_types: { \"1\": \"cpf\" },\n  birthdays: [req.passenger_birthday || (Array.isArray(req.birthdays) ? req.birthdays[0] : \"1990-01-01\")],\n  seat_numbers: seatNumber ? [Number(seatNumber)] : [],\n  return_seat_numbers: [],\n  data: JSON.stringify(dataArray)\n};\n\nreturn [{\n  json: {\n    session_id: Number(user.id || req.session_id || 0),\n    phone_number: phone,\n    order,\n    original_req: req,\n    seat_number: seatNumber\n  }\n}];"
       },
       "id": "gold-star-0047",
       "name": "Build Order Payload",
@@ -97,7 +97,7 @@
         "operation": "executeQuery",
         "query": "UPDATE conversational_sessions SET current_state='EXPECTING_PAYMENT', state_payload=state_payload || $2::jsonb WHERE id=$1 RETURNING *;",
         "options": {
-          "queryReplacement": "={{ [$json.session_id, JSON.stringify({ order_id: $json.order_id, payment_link: $json.payment_link })] }}"
+          "queryReplacement": "={{ [$json.session_id, JSON.stringify({ order_id: $json.order_id, payment_link: $json.payment_link, ticket_url: $json.ticket_url, trip_id: $json.order.trip_id, route_id: $json.order.route_id, travel_date: $json.order.date, seat_number: $json.seat_number })] }}"
         }
       },
       "id": "gold-star-0050",
@@ -117,34 +117,21 @@
     },
     {
       "parameters": {
-        "method": "POST",
-        "url": "={{ $env.EVOLUTION_API_URL + '/message/sendText/' + $env.EVOLUTION_INSTANCE }}",
-        "options": {
-          "timeout": 15000,
-          "response": {
-            "response": {
-              "neverError": false
-            }
-          }
-        },
-        "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [
+        "keepOnlySet": true,
+        "values": {
+          "string": [
             {
-              "name": "apikey",
-              "value": "={{ $env.EVOLUTION_API_KEY }}"
+              "name": "payment_link",
+              "value": "={{ $json.payment_link }}"
             }
           ]
         },
-        "sendBody": true,
-        "contentType": "raw",
-        "rawContentType": "application/json",
-        "body": "={{ JSON.stringify({ number: $('Validate Order Response').first().json.phone_number, text: 'Pedido criado com sucesso. Para concluir a compra, pague pelo link: ' + $('Validate Order Response').first().json.payment_link }) }}"
+        "options": {}
       },
-      "id": "gold-star-0051",
-      "name": "Send Payment Link",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
+      "id": "gold-star-return",
+      "name": "Return to Agent",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 2,
       "position": [
         1370,
         300
@@ -211,7 +198,7 @@
       "main": [
         [
           {
-            "node": "Send Payment Link",
+            "node": "Return to Agent",
             "type": "main",
             "index": 0
           }

@@ -6,14 +6,22 @@ const path = require('node:path');
 const directory = path.join(__dirname, '..', 'workflows');
 const files = fs.readdirSync(directory).filter((file) => /^\d{2}_.+\.json$/.test(file));
 
-test('ships exactly eight production workflows', () => assert.equal(files.length, 8));
+test('ships exactly six production workflows', () => assert.equal(files.length, 6));
 test('all workflow connections target existing nodes', () => {
   for (const file of files) {
     const workflow = JSON.parse(fs.readFileSync(path.join(directory, file), 'utf8'));
     const names = new Set(workflow.nodes.map((item) => item.name));
     for (const [source, outputs] of Object.entries(workflow.connections)) {
       assert.ok(names.has(source), `${file}: ${source}`);
-      for (const branch of outputs.main) for (const target of branch) assert.ok(names.has(target.node), `${file}: ${target.node}`);
+      for (const branches of Object.values(outputs)) {
+        if (Array.isArray(branches)) {
+          for (const branch of branches) {
+            for (const target of branch) {
+              assert.ok(names.has(target.node), `${file}: ${target.node}`);
+            }
+          }
+        }
+      }
     }
   }
 });
