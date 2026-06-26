@@ -186,7 +186,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "={{ $env.EVOLUTION_API_URL + '/chat/getBase64FromMediaMessage/' + $env.EVOLUTION_INSTANCE }}",
+        "url": "={{ (String($env.EVOLUTION_API_URL).includes('localhost') || String($env.EVOLUTION_API_URL).includes('host.docker.internal')) ? 'http://evolution-api:8080' : $env.EVOLUTION_API_URL }}/chat/getBase64FromMediaMessage/{{ $env.EVOLUTION_INSTANCE }}",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [

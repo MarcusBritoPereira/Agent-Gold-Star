@@ -105,7 +105,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "={{ $env.EVOLUTION_API_URL + '/message/sendText/' + $env.EVOLUTION_INSTANCE }}",
+        "url": "={{ (String($env.EVOLUTION_API_URL).includes('localhost') || String($env.EVOLUTION_API_URL).includes('host.docker.internal')) ? 'http://evolution-api:8080' : $env.EVOLUTION_API_URL }}/message/sendText/{{ $env.EVOLUTION_INSTANCE }}",
         "options": {
           "timeout": 15000,
           "response": {
