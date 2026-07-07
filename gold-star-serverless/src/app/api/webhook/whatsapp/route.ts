@@ -42,17 +42,17 @@ export async function POST(request: Request) {
         const type = body.entry[0].changes[0].value.messages[0].type;
 
         if (type === 'text') {
-          console.log(\`Received message from \${from}: \${msgBody}\`);
+          console.log(`Received message from ${from}: ${msgBody}`);
           
           // Generate a session ID based on phone number and current date (resets daily, for example)
           // For simplicity, just use the phone number as session ID for now
-          const sessionId = \`session_\${from}\`;
+          const sessionId = `session_${from}`;
           
           // Call the AI Agent asynchronously (don't block the webhook response)
           processChat(sessionId, from, msgBody).catch(console.error);
           
         } else {
-          console.log(\`Received unsupported message type: \${type}\`);
+          console.log(`Received unsupported message type: ${type}`);
         }
       }
       return new NextResponse('EVENT_RECEIVED', { status: 200 });

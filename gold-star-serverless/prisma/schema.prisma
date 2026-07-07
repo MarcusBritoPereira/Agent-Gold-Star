@@ -3,10 +3,478 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
-  url      = "file:./dev.db"
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
 }
 
+model action_text_rich_texts {
+  id          BigInt   @id @default(autoincrement())
+  name        String   @db.VarChar
+  body        String?
+  record_type String   @db.VarChar
+  record_id   BigInt
+  created_at  DateTime @db.Timestamp(6)
+  updated_at  DateTime @db.Timestamp(6)
+
+  @@unique([record_type, record_id, name], map: "index_action_text_rich_texts_uniqueness")
+}
+
+model active_storage_attachments {
+  id                   BigInt               @id @default(autoincrement())
+  name                 String               @db.VarChar
+  record_type          String               @db.VarChar
+  record_id            BigInt
+  blob_id              BigInt
+  created_at           DateTime             @db.Timestamp(6)
+  active_storage_blobs active_storage_blobs @relation(fields: [blob_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_rails_c3b3935057")
+
+  @@unique([record_type, record_id, name, blob_id], map: "index_active_storage_attachments_uniqueness")
+  @@index([blob_id], map: "index_active_storage_attachments_on_blob_id")
+}
+
+model active_storage_blobs {
+  id                             BigInt                           @id @default(autoincrement())
+  key                            String                           @unique(map: "index_active_storage_blobs_on_key") @db.VarChar
+  filename                       String                           @db.VarChar
+  content_type                   String?                          @db.VarChar
+  metadata                       String?
+  service_name                   String                           @db.VarChar
+  byte_size                      BigInt
+  checksum                       String?                          @db.VarChar
+  created_at                     DateTime                         @db.Timestamp(6)
+  active_storage_attachments     active_storage_attachments[]
+  active_storage_variant_records active_storage_variant_records[]
+}
+
+model active_storage_variant_records {
+  id                   BigInt               @id @default(autoincrement())
+  blob_id              BigInt
+  variation_digest     String               @db.VarChar
+  active_storage_blobs active_storage_blobs @relation(fields: [blob_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_rails_993965df05")
+
+  @@unique([blob_id, variation_digest], map: "index_active_storage_variant_records_uniqueness")
+}
+
+model agencies {
+  id             BigInt           @id @default(autoincrement())
+  name           String?          @db.VarChar
+  created_at     DateTime         @db.Timestamp(6)
+  updated_at     DateTime         @db.Timestamp(6)
+  status         Int              @default(1)
+  city           String?          @db.VarChar
+  phone          String?          @db.VarChar
+  destroy_orders destroy_orders[]
+  seats          seats[]
+  users          users[]
+}
+
+model ar_internal_metadata {
+  key        String   @id @db.VarChar
+  value      String?  @db.VarChar
+  created_at DateTime @db.Timestamp(6)
+  updated_at DateTime @db.Timestamp(6)
+}
+
+model customers {
+  id              BigInt            @id @default(autoincrement())
+  name            String?           @db.VarChar
+  document        String?           @db.VarChar
+  created_at      DateTime          @db.Timestamp(6)
+  updated_at      DateTime          @db.Timestamp(6)
+  phone           String?           @db.VarChar
+  birthday        DateTime?         @db.Date
+  document_type   Int               @default(6)
+  order_customers order_customers[]
+}
+
+model destroy_orders {
+  id         BigInt    @id @default(autoincrement())
+  reason     String?
+  username   String?   @db.VarChar
+  status     Int       @default(0)
+  order_id   BigInt
+  agency_id  BigInt?
+  created_at DateTime  @db.Timestamp(6)
+  updated_at DateTime  @db.Timestamp(6)
+  agencies   agencies? @relation(fields: [agency_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_rails_afc9adf3ba")
+  orders     orders    @relation(fields: [order_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_rails_e3b86d98de")
+
+  @@index([agency_id], map: "index_destroy_orders_on_agency_id")
+  @@index([order_id], map: "index_destroy_orders_on_order_id")
+}
+
+model discounts {
+  id               BigInt            @id @default(autoincrement())
+  name             String?           @db.VarChar
+  percentage       Decimal?          @db.Decimal
+  category         Int               @default(1)
+  created_at       DateTime          @db.Timestamp(6)
+  updated_at       DateTime          @db.Timestamp(6)
+  quantity         Int?
+  value_disc       Decimal?          @db.Decimal
+  discount_percent Boolean           @default(true)
+  route_discounts  route_discounts[]
+}
+
+model issuers {
+  id                BigInt            @id @default(autoincrement())
+  cnpj              String            @db.VarChar
+  inscricaoEstadual String            @db.VarChar
+  razaoSocial       String            @db.VarChar
+  crt               Int
+  logradouro        String            @db.VarChar
+  numero            String            @db.VarChar
+  bairro            String            @db.VarChar
+  nrIbgeMunicipio   Int               @default(1506807)
+  municipio         String            @default("Santarém") @db.VarChar
+  cep               Int
+  created_at        DateTime          @db.Timestamp(6)
+  updated_at        DateTime          @db.Timestamp(6)
+  porto_facil_token String?           @db.VarChar
+  order_customers   order_customers[]
+}
+
+model layout_sides {
+  id        BigInt  @id @default(autoincrement())
+  position  Int?
+  rows      Int?
+  layout_id BigInt
+  layouts   layouts @relation(fields: [layout_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_rails_0589f1f45e")
+  seats     seats[]
+
+  @@index([layout_id], map: "index_layout_sides_on_layout_id")
+}
+
+model layouts {
+  id                BigInt         @id @default(autoincrement())
+  name              String?        @db.VarChar
+  left_side_columns Int            @default(1)
+  created_at        DateTime       @db.Timestamp(6)
+  updated_at        DateTime       @db.Timestamp(6)
+  layout_sides      layout_sides[]
+  seats             seats[]
+}
+
+model notifications {
+  id          BigInt   @id @default(autoincrement())
+  title       String?  @db.VarChar
+  description String?  @db.VarChar
+  status      Int      @default(2)
+  created_at  DateTime @db.Timestamp(6)
+  updated_at  DateTime @db.Timestamp(6)
+}
+
+model order_customers {
+  id                    BigInt       @id @default(autoincrement())
+  order_id              BigInt
+  customer_id           BigInt
+  discount_route_id     Int?
+  discount_tax_id       Int?
+  ticket_price          Decimal?     @db.Decimal
+  tax_price             Decimal?     @db.Decimal
+  integral_ticket_price Decimal?     @db.Decimal
+  ticket_discount       Decimal?     @db.Decimal
+  integral_tax_price    Decimal?     @db.Decimal
+  tax_discount          Decimal?     @db.Decimal
+  mensagem              String?      @db.VarChar
+  numero                String?      @db.VarChar
+  serie                 String?      @db.VarChar
+  protocolo             String?      @db.VarChar
+  mensagem_chave_acesso String?      @db.VarChar
+  chaveAcesso           String?      @db.VarChar
+  pdf                   String?
+  status                Int          @default(1)
+  checked_at            DateTime?    @db.Timestamp(6)
+  checked_by            String?      @db.VarChar
+  porto_facil_id        Int?
+  issuer_id             BigInt
+  seat_number           Int?
+  trip_id               BigInt?
+  deleted_at            DateTime?    @db.Timestamp(6)
+  checked_by_id         Int?
+  checked_owner         String?      @db.VarChar
+  origin                Int          @default(1)
+  old_seat              String?      @db.VarChar
+  updated_seat_by       String?      @db.VarChar
+  updated_seat_at       DateTime?    @db.Timestamp(6)
+  trip_way              String?      @default("one_way") @db.VarChar
+  orders                orders       @relation(fields: [order_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_rails_9c276a0526")
+  customers             customers    @relation(fields: [customer_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_rails_a76e3d2df8")
+  trips                 trips?       @relation(fields: [trip_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_rails_e84570ff01")
+  issuers               issuers      @relation(fields: [issuer_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_rails_f060bd1969")
+  trip_seats            trip_seats[]
+
+  @@index([customer_id], map: "index_order_customers_on_customer_id")
+  @@index([issuer_id], map: "index_order_customers_on_issuer_id")
+  @@index([order_id], map: "index_order_customers_on_order_id")
+  @@index([order_id, deleted_at], map: "index_order_customers_on_order_id_and_deleted_at")
+  @@index([trip_id], map: "index_order_customers_on_trip_id")
+  @@index([discount_route_id], map: "order_customers_discount_route_id_fk")
+  @@index([discount_tax_id], map: "order_customers_discount_tax_id_fk")
+}
+
+model orders {
+  id                                    BigInt            @id @default(autoincrement())
+  data                                  Json?             @db.Json
+  asaas_id                              String?           @db.VarChar
+  route_id                              BigInt
+  created_at                            DateTime          @db.Timestamp(6)
+  updated_at                            DateTime          @db.Timestamp(6)
+  status                                String?           @db.VarChar
+  code                                  String?           @db.VarChar
+  date                                  DateTime?         @db.Date
+  pix_qr_code                           String?           @db.VarChar
+  transaction_code                      String?           @db.VarChar
+  emergency_contact_name                String?           @db.VarChar
+  emergency_contact_phone               String?           @db.VarChar
+  origin                                String?           @db.VarChar
+  destination                           String?           @db.VarChar
+  payment_method                        String?           @db.VarChar
+  obs                                   String?
+  username                              String?           @db.VarChar
+  tax                                   Decimal?          @db.Decimal
+  payment_method_2                      String?           @db.VarChar
+  payment_method_3                      String?           @db.VarChar
+  payment_method_4                      String?           @db.VarChar
+  price_2                               Decimal?          @db.Decimal
+  price_3                               Decimal?          @db.Decimal
+  price_4                               Decimal?          @db.Decimal
+  tax_method                            String?           @db.VarChar
+  tax_method_2                          String?           @db.VarChar
+  tax_method_3                          String?           @db.VarChar
+  tax_method_4                          String?           @db.VarChar
+  tax_2                                 Decimal?          @db.Decimal
+  tax_3                                 Decimal?          @db.Decimal
+  tax_4                                 Decimal?          @db.Decimal
+  full_price                            Decimal?          @db.Decimal
+  full_tax                              Decimal?          @db.Decimal
+  price                                 Decimal?          @db.Decimal
+  user_id                               BigInt?
+  return_route_id                       BigInt?
+  return_date                           DateTime?         @db.Date
+  return_origin                         String?           @db.VarChar
+  return_destination                    String?           @db.VarChar
+  destroy_orders                        destroy_orders[]
+  order_customers                       order_customers[]
+  routes_orders_return_route_idToroutes routes?           @relation("orders_return_route_idToroutes", fields: [return_route_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_rails_95edc11879")
+  routes_orders_route_idToroutes        routes            @relation("orders_route_idToroutes", fields: [route_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_rails_eba449c40b")
+  users                                 users?            @relation(fields: [user_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_rails_f868b47f6a")
+
+  @@index([date, route_id], map: "index_orders_on_date_and_route_id")
+  @@index([return_route_id], map: "index_orders_on_return_route_id")
+  @@index([route_id], map: "index_orders_on_route_id")
+  @@index([user_id], map: "index_orders_on_user_id")
+}
+
+model posts {
+  id          BigInt   @id @default(autoincrement())
+  title       String?  @db.VarChar
+  description String?
+  slug        String?  @db.VarChar
+  created_at  DateTime @db.Timestamp(6)
+  updated_at  DateTime @db.Timestamp(6)
+  status      Int      @default(1)
+}
+
+model route_discounts {
+  id          BigInt    @id @default(autoincrement())
+  route_id    BigInt
+  discount_id BigInt
+  created_at  DateTime  @db.Timestamp(6)
+  updated_at  DateTime  @db.Timestamp(6)
+  routes      routes    @relation(fields: [route_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_rails_38aefb9176")
+  discounts   discounts @relation(fields: [discount_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_rails_c854c72270")
+
+  @@index([discount_id], map: "index_route_discounts_on_discount_id")
+  @@index([route_id], map: "index_route_discounts_on_route_id")
+}
+
+model route_vehicles {
+  id         BigInt   @id @default(autoincrement())
+  price      Decimal  @default(0.0) @db.Decimal
+  route_id   BigInt
+  vehicle_id BigInt
+  created_at DateTime @db.Timestamp(6)
+  updated_at DateTime @db.Timestamp(6)
+  vehicles   vehicles @relation(fields: [vehicle_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_rails_bda530213d")
+  routes     routes   @relation(fields: [route_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_rails_d933ced09a")
+
+  @@index([route_id], map: "index_route_vehicles_on_route_id")
+  @@index([vehicle_id], map: "index_route_vehicles_on_vehicle_id")
+}
+
+model routes {
+  id                                    BigInt            @id @default(autoincrement())
+  origin                                String?           @db.VarChar
+  destination                           String?           @db.VarChar
+  week_day                              String?           @db.VarChar
+  hour                                  DateTime?         @db.Time(6)
+  duration                              String?           @default("-") @db.VarChar
+  stopover                              String?           @db.VarChar
+  speed_boat_price                      Decimal?          @db.Decimal
+  hammock_price                         Decimal?          @db.Decimal
+  suite_price1                          Decimal?          @db.Decimal
+  suite_price2                          Decimal?          @db.Decimal
+  watercraft_id                         BigInt
+  created_at                            DateTime          @db.Timestamp(6)
+  updated_at                            DateTime          @db.Timestamp(6)
+  hammock_price_off                     Decimal?          @db.Decimal
+  suite_price1_off                      Decimal?          @db.Decimal
+  suite_price2_off                      Decimal?          @db.Decimal
+  speed_boat_price_off                  Decimal?          @db.Decimal
+  has_discount                          Boolean?
+  departure_from                        String?           @db.VarChar
+  semana_alternada                      Boolean           @default(false)
+  start_date                            DateTime?         @db.Date
+  active                                Boolean           @default(true)
+  initial_date                          DateTime?         @db.Date
+  final_date                            DateTime?         @db.Date
+  rota_sazonal                          Boolean           @default(false)
+  district_o                            String?           @db.VarChar
+  district_d                            String?           @db.VarChar
+  featured                              Boolean?          @default(false)
+  slug                                  String?           @db.VarChar
+  slug_destination                      String?           @db.VarChar
+  tax                                   Decimal           @default(8.0) @db.Decimal
+  origin_ibge_code                      Int?
+  destination_ibge_code                 Int?
+  sub_route_id                          Int?
+  transmit_bpe                          Boolean           @default(false)
+  origin_code                           String?           @db.VarChar
+  destination_code                      String?           @db.VarChar
+  promotion_initial                     DateTime?         @db.Date
+  promotion_end                         DateTime?         @db.Date
+  promotion_initial_2                   DateTime?         @db.Date
+  promotion_end_2                       DateTime?         @db.Date
+  promotion_initial_3                   DateTime?         @db.Date
+  promotion_end_3                       DateTime?         @db.Date
+  root_route_id                         Int?
+  sequence_index                        Int?
+  orders_orders_return_route_idToroutes orders[]          @relation("orders_return_route_idToroutes")
+  orders_orders_route_idToroutes        orders[]          @relation("orders_route_idToroutes")
+  route_discounts                       route_discounts[]
+  route_vehicles                        route_vehicles[]
+  watercrafts                           watercrafts       @relation(fields: [watercraft_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_rails_d53e8547ee")
+  trip_seats                            trip_seats[]
+
+  @@index([watercraft_id], map: "index_routes_on_watercraft_id")
+  @@index([sub_route_id], map: "routes_sub_route_id_fk")
+}
+
+model schema_migrations {
+  version String @id @db.VarChar
+}
+
+model seats {
+  id             BigInt       @id @default(autoincrement())
+  status         Int          @default(1)
+  index          Int?
+  number         Int?
+  sides_length   Int?
+  layout_id      BigInt
+  layout_side_id BigInt
+  created_at     DateTime     @db.Timestamp(6)
+  updated_at     DateTime     @db.Timestamp(6)
+  agency_id      BigInt?
+  layout_sides   layout_sides @relation(fields: [layout_side_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_rails_8856675d00")
+  layouts        layouts      @relation(fields: [layout_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_rails_ed6e259c0f")
+  agencies       agencies?    @relation(fields: [agency_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_rails_fbeb054d55")
+
+  @@index([agency_id], map: "index_seats_on_agency_id")
+  @@index([layout_id], map: "index_seats_on_layout_id")
+  @@index([layout_side_id], map: "index_seats_on_layout_side_id")
+}
+
+model settings {
+  id                     BigInt    @id @default(autoincrement())
+  tickets_per_watercraft Int?
+  sale_before            DateTime? @db.Date
+  created_at             DateTime  @db.Timestamp(6)
+  updated_at             DateTime  @db.Timestamp(6)
+}
+
+model trip_seats {
+  id                BigInt           @id @default(autoincrement())
+  status            Int              @default(1)
+  index             Int?
+  number            Int?
+  position          Int?
+  created_at        DateTime         @db.Timestamp(6)
+  updated_at        DateTime         @db.Timestamp(6)
+  trip_id           BigInt
+  order_customer_id BigInt?
+  route_id          BigInt?
+  trips             trips            @relation(fields: [trip_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_rails_13a7cc564f")
+  routes            routes?          @relation(fields: [route_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_rails_bb75428f53")
+  order_customers   order_customers? @relation(fields: [order_customer_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_rails_c0f5925adf")
+
+  @@index([order_customer_id], map: "index_trip_seats_on_order_customer_id")
+  @@index([route_id], map: "index_trip_seats_on_route_id")
+  @@index([trip_id], map: "index_trip_seats_on_trip_id")
+  @@index([trip_id, status], map: "index_trip_seats_on_trip_id_and_status")
+}
+
+model trips {
+  id              BigInt            @id @default(autoincrement())
+  master_route_id BigInt?
+  date            DateTime?         @db.Date
+  created_at      DateTime          @db.Timestamp(6)
+  updated_at      DateTime          @db.Timestamp(6)
+  watercraft_id   BigInt?
+  available_web   String?           @db.VarChar
+  active          Boolean           @default(true)
+  order_customers order_customers[]
+  trip_seats      trip_seats[]
+  watercrafts     watercrafts?      @relation(fields: [watercraft_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_rails_fa1053069c")
+
+  @@unique([master_route_id, date, watercraft_id], map: "unique_trip_index")
+  @@index([watercraft_id], map: "index_trips_on_watercraft_id")
+  @@index([master_route_id], map: "trips_master_route_id_fk")
+}
+
+model users {
+  id                     BigInt    @id @default(autoincrement())
+  name                   String?   @db.VarChar
+  created_at             DateTime  @db.Timestamp(6)
+  updated_at             DateTime  @db.Timestamp(6)
+  email                  String    @unique(map: "index_users_on_email") @default("") @db.VarChar
+  encrypted_password     String    @default("") @db.VarChar
+  reset_password_token   String?   @unique(map: "index_users_on_reset_password_token") @db.VarChar
+  reset_password_sent_at DateTime? @db.Timestamp(6)
+  remember_created_at    DateTime? @db.Timestamp(6)
+  role                   Int       @default(2)
+  departure_from         String?   @db.VarChar
+  agency_id              BigInt?
+  orders                 orders[]
+  agencies               agencies? @relation(fields: [agency_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_rails_627daf9bbe")
+
+  @@index([agency_id], map: "index_users_on_agency_id")
+}
+
+model vehicles {
+  id             BigInt           @id @default(autoincrement())
+  name           String?          @db.VarChar
+  created_at     DateTime         @db.Timestamp(6)
+  updated_at     DateTime         @db.Timestamp(6)
+  price          Decimal?         @db.Decimal
+  route_vehicles route_vehicles[]
+}
+
+model watercrafts {
+  id            BigInt   @id @default(autoincrement())
+  name          String?  @db.VarChar
+  category      Int?
+  limit_luggage String?  @db.VarChar
+  created_at    DateTime @db.Timestamp(6)
+  updated_at    DateTime @db.Timestamp(6)
+  issuer_id     Int?
+  layout_id     Int?
+  routes        routes[]
+  trips         trips[]
+
+  @@index([issuer_id], map: "index_watercrafts_on_issuer_id")
+  @@index([layout_id], map: "watercrafts_layout_id_fk")
+}
 model User {
   id        String   @id @default(cuid())
   phone     String   @unique
