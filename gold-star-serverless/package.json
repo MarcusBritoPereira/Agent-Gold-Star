@@ -1,0 +1,32 @@
+{
+  "name": "gold-star-serverless",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start"
+  },
+  "dependencies": {
+    "@ai-sdk/openai": "^1.1.0",
+    "@prisma/client": "^6.2.1",
+    "ai": "^4.1.2",
+    "axios": "^1.7.9",
+    "next": "15.1.5",
+    "prisma": "^6.2.1",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "zod": "^3.24.1"
+  },
+  "prisma": {
+    "seed": "tsx prisma/seed.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "eslint": "^9",
+    "eslint-config-next": "16.2.10",
+    "tsx": "^4.23.0",
+    "typescript": "^5"
+  }
+}
