@@ -475,35 +475,44 @@ model watercrafts {
   @@index([issuer_id], map: "index_watercrafts_on_issuer_id")
   @@index([layout_id], map: "watercrafts_layout_id_fk")
 }
+
 model User {
-  id        String   @id @default(cuid())
-  phone     String   @unique
+  id        String    @id @default(cuid())
+  phone     String    @unique
   name      String?
   cpf       String?
   birthDate String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  sessions Session[]
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  sessions  Session[]
 }
 
 model Session {
-  id        String    @id @default(cuid())
-  userId    String
-  user      User      @relation(fields: [userId], references: [id])
-  status    String    @default("ACTIVE") // ACTIVE, CLOSED
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
-
-  messages Message[]
+  id             String    @id @default(cuid())
+  userId         String
+  status         String    @default("ACTIVE")
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  hora           String?
+  passengerCpf   String?
+  passengerDob   String?
+  passengerName  String?
+  passengerPhone String?
+  price          Float?
+  routeId        String?
+  seat           String?
+  state          String?
+  tax            Float?
+  tripDate       String?
+  messages       Message[]
+  user           User      @relation(fields: [userId], references: [id])
 }
 
 model Message {
   id        String   @id @default(cuid())
   sessionId String
-  session   Session  @relation(fields: [sessionId], references: [id])
-  role      String   // user, assistant, system
+  role      String
   content   String
   createdAt DateTime @default(now())
+  session   Session  @relation(fields: [sessionId], references: [id])
 }
-

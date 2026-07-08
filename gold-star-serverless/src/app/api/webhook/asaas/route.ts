@@ -13,71 +13,92 @@ export async function POST(req: Request) {
 
     // Check if it's a payment confirmation event
     if (body.event === 'PAYMENT_RECEIVED' || body.event === 'PAYMENT_CONFIRMED') {
-      const paymentId = body.payment.id;
+      const paymentId = body.payment?.id;
+      const externalReference = body.payment?.externalReference;
 
-      // Find the order by Asaas ID
-      const order = await prisma.orders.findFirst({
-        where: { asaas_id: paymentId }
+      if (!externalReference && !paymentId) {
+        return NextResponse.json({ ok: false, reason: "sem referencia" });
+      }
+
+      // Find the order by External Reference or Asaas ID
+      let order = null;
+      if (externalReference) {
+        const orderId = parseInt(externalReference, 10);
+        if (!isNaN(orderId)) {
+          order = await prisma.orders.findUnique({ where: { id: orderId } });
+        }
+      }
+      
+      if (!order && paymentId) {
+        order = await prisma.orders.findFirst({
+          where: { asaas_id: paymentId }
+        });
+      }
+
+      if (!order) {
+        return NextResponse.json({ ok: false, reason: "pedido nao encontrado" });
+      }
+
+      // Se já estiver pago e bilhete já enviado, não faz nada
+      if (order.status === 'approved') {
+        return NextResponse.json({ ok: true, duplicated: true });
+      }
+
+      // Marcar como pago
+      await prisma.orders.update({
+        where: { id: order.id },
+        data: { status: 'approved' }
       });
 
-      if (order) {
-        // Update Order Status to approved
-        await prisma.orders.update({
-          where: { id: order.id },
-          data: { status: 'approved' }
+      // Find the order customer to update status
+      const orderCustomer = await prisma.order_customers.findFirst({
+        where: { order_id: order.id }
+      });
+
+      if (orderCustomer) {
+        await prisma.order_customers.update({
+          where: { id: orderCustomer.id },
+          data: { status: 2 } // 2 = Approved
         });
 
-        // Find the order customer to update status
-        const orderCustomer = await prisma.order_customers.findFirst({
-          where: { order_id: order.id }
+        // Find the trip seat to update status
+        const tripSeat = await prisma.trip_seats.findFirst({
+          where: { order_customer_id: orderCustomer.id }
         });
 
-        if (orderCustomer) {
-          await prisma.order_customers.update({
-            where: { id: orderCustomer.id },
+        if (tripSeat) {
+          await prisma.trip_seats.update({
+            where: { id: tripSeat.id },
             data: { status: 2 } // 2 = Approved
           });
+        }
+      }
 
-          // Find the trip seat to update status
-          const tripSeat = await prisma.trip_seats.findFirst({
-            where: { order_customer_id: orderCustomer.id }
-          });
-
-          if (tripSeat) {
-            await prisma.trip_seats.update({
-              where: { id: tripSeat.id },
-              data: { status: 2 } // 2 = Approved
-            });
-          }
+      // Send WhatsApp Messages
+      if (order.emergency_contact_phone) {
+        // Format phone number to E.164 (ensure country code +55 exists)
+        let phone = order.emergency_contact_phone.replace(/\D/g, '');
+        if (phone.length === 10 || phone.length === 11) {
+          phone = `55${phone}`;
         }
 
-        // Generate text ticket (since we don't have a PDF generator here)
-        const ticketMessage = `🎉 *PAGAMENTO APROVADO!* 🎉
+        // Mensagem 1: Confirmação
+        await sendWhatsAppMessage(phone, `Pagamento confirmado.\n\nSua passagem foi confirmada com sucesso.`);
 
-Aqui está o seu bilhete de embarque, ${order.username}! 🎫
-
-*Código Localizador:* ${order.code}
-*Origem:* ${order.origin}
-*Destino:* ${order.destination}
-*Data:* ${order.date?.toLocaleDateString('pt-BR')}
-*Poltrona:* ${orderCustomer?.seat_number}
-
-Por favor, apresente este bilhete e um documento com foto no momento do embarque. Desejamos uma excelente viagem! 🚤💨`;
-
-        // Send WhatsApp Message
-        if (order.emergency_contact_phone) {
-          // Format phone number to E.164 (ensure country code +55 exists)
-          let phone = order.emergency_contact_phone.replace(/\D/g, '');
-          if (phone.length === 10 || phone.length === 11) {
-            phone = `55${phone}`;
-          }
-
-          await sendWhatsAppMessage(phone, ticketMessage);
-        }
+        // Mensagem 2: Bilhete
+        // Convert dates correctly accounting for UTC if needed
+        const dataFormatada = order.date ? new Date(order.date.getTime() + order.date.getTimezoneOffset() * 60000).toLocaleDateString('pt-BR') : '';
+        const passageiro = order.emergency_contact_name || order.username || 'Passageiro';
+        
+        const bilheteMsg = `Seu bilhete foi emitido.\n\nPassageiro: ${passageiro}\nRota: ${order.origin} → ${order.destination}\nData: ${dataFormatada}\nHorário: 08:00\nPoltrona: ${orderCustomer?.seat_number || 'N/A'}\n\nApresente o bilhete no momento do embarque.`;
+        await sendWhatsAppMessage(phone, bilheteMsg);
+        
+        // Mensagem 3: PDF (Current workaround since no PDF generator is available)
+        // In the future: await sendWhatsAppDocument(phone, ticket.pdfUrl, `bilhete_${order.id}.pdf`);
       }
     }
 
-    return NextResponse.json({ success: true });
+    return NextResponse.json({ ok: true });
   } catch (error) {
     console.error('Webhook Asaas Error:', error);
     return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });

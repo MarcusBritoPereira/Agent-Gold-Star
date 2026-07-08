@@ -5,7 +5,17 @@ import { prisma } from './db';
 import { sendWhatsAppMessage } from './whatsapp';
 import axios from 'axios';
 
-const SYSTEM_PROMPT = `Você é um atendente humano e paciente de vendas de passagens hidroviárias da empresa Gold Star. Você atende todo tipo de público, então sua linguagem deve ser simples, direta, educada e SEM termos técnicos. Aja como um humano real conversando no WhatsApp.
+const SYSTEM_PROMPT = `Você é o assistente virtual oficial da Gold Star, uma empresa de transporte fluvial (lanchas rápidas) na Amazônia. 
+A Gold Star opera EXCLUSIVAMENTE com lanchas. NUNCA fale que a viagem é de navio, barco, balsa ou ferry. Use sempre o termo 'lancha'.
+
+DIRETRIZES CRÍTICAS (SOB PENA DE DESLIGAMENTO):
+- É ESTRITAMENTE PROIBIDO INVENTAR, ADIVINHAR OU LEMBRAR de viagens, datas, preços ou poltronas.
+- Você DEVE SEMPRE chamar as ferramentas (listar_cidades, buscar_rotas, consultar_assentos) para obter os dados em tempo real.
+- MESMO QUE O CLIENTE DIGA "QUERO VIAJAR SEXTA", VOCÊ NÃO PODE CONFIRMAR SEM ANTES CHAMAR "buscar_rotas" PARA VERIFICAR SE EXISTE VIAGEM NESSA DATA.
+- SE VOCÊ NÃO USOU UMA FERRAMENTA NESTE EXATO ATENDIMENTO PARA BUSCAR A INFORMAÇÃO, VOCÊ NÃO A TEM!
+
+Regras de Atendimento:
+Você é um atendente humano e paciente de vendas de passagens hidroviárias da empresa Gold Star. Você atende todo tipo de público, então sua linguagem deve ser simples, direta, educada e SEM termos técnicos. Aja como um humano real conversando no WhatsApp.
 
 REGRAS CRÍTICAS DE UX:
 1. A Gold Star opera EXCLUSIVAMENTE com lanchas (lanchas rápidas). NUNCA fale que a viagem é de navio, barco, balsa, balsa rápida ou ferry. Use sempre o termo 'lancha'.
@@ -17,18 +27,17 @@ REGRAS CRÍTICAS DE UX:
 7. NUNCA use links em formato Markdown (ex: [Texto](link)). O WhatsApp não renderiza esse formato. Envie o link de pagamento puro e de forma clara.
 8. NUNCA selecione uma poltrona/assento automaticamente para o cliente. Você deve listar as poltronas disponíveis obtidas da ferramenta e pedir para o cliente escolher explicitamente.
 9. NUNCA confirme a passagem antes do pagamento. Sempre use o termo 'reserva' e informe que a poltrona ficará reservada aguardando pagamento. Avise que após o pagamento aprovado o bilhete será enviado automaticamente.
-10. Detalhe e apresente os valores detalhadamente (Passagem, Tarifa de Embarque e Total), mostrando sempre a soma total.
+11. OBRIGATÓRIO: Ao listar opções de viagens, inclua os IDs (route_id, trip_id) discretamente.
+12. OBRIGATÓRIO: NUNCA pule direto para gerar_pagamento sem antes ter validado a viagem (buscar_rotas) e a poltrona (consultar_assentos).
 
-FLUXO DE VENDAS OBRIGATÓRIO:
-1. Colete a Origem e Destino com empatia.
-2. Chame buscar_rotas com a origem. Apresente as opções de horários e preços.
-3. Pergunte a data.
-4. Chame consultar_assentos. Liste poltronas disponíveis e peça para escolher.
-5. Guarde a poltrona.
-6. Peça Nome, CPF e Data de Nascimento.
-7. Apresente o resumo da reserva e peça confirmação.
-8. Após confirmação, chame gerar_pagamento.
-9. Envie o link de pagamento ou PIX retornado pela API.`;
+FLUXO DE VENDAS (NÃO PULE ETAPAS):
+PASSO 1: O cliente diz "Olá" ou "Quero viajar". Você CHAMA A FERRAMENTA listar_cidades (sem parâmetros) e pergunta a origem, listando as origens recebidas da ferramenta.
+PASSO 2: O cliente escolhe a origem. Você CHAMA A FERRAMENTA listar_cidades (passando a origem) e pergunta o destino, listando os destinos recebidos.
+PASSO 3: O cliente escolhe o destino. Você CHAMA A FERRAMENTA buscar_rotas e lista EXATAMENTE as datas que a ferramenta retornou (mantendo o ID Rota visível).
+PASSO 4: O cliente escolhe a data. Você CHAMA A FERRAMENTA consultar_assentos (repassando o ID Rota lido) e lista EXATAMENTE as poltronas disponíveis. (Nota: Se o usuário já enviar a poltrona escolhida junto com a data, pule este passo e vá direto para o Passo 5 sem chamar a ferramenta).
+PASSO 5: O cliente escolhe a poltrona. Peça Nome, CPF e Data de Nascimento.
+PASSO 6: O cliente informa os dados. Mostre o resumo e pergunte como ele quer pagar: "PIX ou Cartão de Crédito?".
+PASSO 7: O cliente escolhe a forma de pagamento. Você CHAMA A FERRAMENTA gerar_pagamento repassando a forma_pagamento e envia o link.`;
 
 const API_BASE_URL = process.env.API_BASE_URL || 'https://lanchasgoldstar.com.br/api';
 
@@ -56,6 +65,12 @@ export async function processChat(sessionId: string, phoneNumber: string, userMe
     });
   }
 
+  if (['olá', 'ola', 'oi', 'bom dia', 'boa tarde', 'boa noite', 'quero viajar'].includes(userMessage.trim().toLowerCase())) {
+    await prisma.message.deleteMany({
+      where: { sessionId: session.id, role: { not: 'system' } }
+    });
+  }
+
   await prisma.message.create({
     data: { sessionId: session.id, role: 'user', content: userMessage }
   });
@@ -74,10 +89,35 @@ export async function processChat(sessionId: string, phoneNumber: string, userMe
     model: openai('gpt-4o-mini'),
     messages: coreMessages,
     tools: {
-      buscar_rotas: {
-        description: 'Busca as rotas e viagens disponíveis a partir de uma origem e destino.',
+      listar_cidades: {
+        description: 'Lista as cidades de origem ou destino disponíveis. Se não passar parâmetros, retorna todas as origens. Se passar a origem, retorna os destinos válidos para aquela origem.',
         parameters: z.object({
-          origem: z.string().describe('Nome da cidade de origem (ex: Santarém, Almeirim)'),
+          origem: z.string().describe('Nome da cidade de origem escolhida pelo cliente').optional(),
+        }),
+        execute: async ({ origem }) => {
+          try {
+            if (origem) {
+               const routes = await prisma.routes.findMany({ 
+                 where: { origin: { contains: origem, mode: 'insensitive' } }, 
+                 select: { destination: true } 
+               });
+               const destinos = [...new Set(routes.map(r => r.destination))];
+               return { destinos_disponiveis: destinos };
+            } else {
+               const routes = await prisma.routes.findMany({ select: { origin: true } });
+               const origens = [...new Set(routes.map(r => r.origin))];
+               return { origens_disponiveis: origens };
+            }
+          } catch (error: any) {
+            console.error('API Error listar_cidades:', error.message);
+            return { error: 'Erro ao buscar cidades no sistema.' };
+          }
+        },
+      },
+      buscar_rotas: {
+        description: 'Busca as próximas viagens disponíveis a partir de uma origem e destino. Retorna as datas (com formatação amigável), horários, preços e IDs (route_id e trip_id).',
+        parameters: z.object({
+          origem: z.string().describe('Nome da cidade de origem (ex: Santarém)'),
           destino: z.string().describe('Nome da cidade de destino').optional(),
         }),
         execute: async ({ origem, destino }) => {
@@ -85,180 +125,168 @@ export async function processChat(sessionId: string, phoneNumber: string, userMe
             const routes = await prisma.routes.findMany({
               where: {
                 origin: { contains: origem, mode: 'insensitive' },
-                ...(destino ? { destination: { contains: destino, mode: 'insensitive' } } : {})
-              },
-              select: {
-                id: true,
-                origin: true,
-                destination: true,
-                week_day: true,
-                hour: true,
-                speed_boat_price: true,
-                tax: true
+                ...(destino ? { destination: { contains: destino, mode: 'insensitive' } } : {}),
+                active: true
               }
             });
-            const serializedRoutes = routes.map(r => ({
-              ...r,
-              id: r.id.toString(),
-              speed_boat_price: r.speed_boat_price?.toString(),
-              tax: r.tax?.toString()
-            }));
-            return { rotas_disponiveis: serializedRoutes };
+            if (routes.length === 0) return { error: 'Nenhuma rota cadastrada para este trecho.' };
+            
+            const diasSemana: Record<string, number> = {
+              'Domingo': 0, 'Segunda-feira': 1, 'Terça-feira': 2,
+              'Quarta-feira': 3, 'Quinta-feira': 4, 'Sexta-feira': 5, 'Sábado': 6
+            };
+            
+            let viagensFormatadas: any[] = [];
+            
+            routes.forEach(r => {
+              if (!r.week_day || diasSemana[r.week_day] === undefined) return;
+              const targetDay = diasSemana[r.week_day];
+              
+              let d = new Date();
+              d.setUTCHours(12, 0, 0, 0);
+              
+              // Find the next occurrence
+              while (d.getUTCDay() !== targetDay) {
+                d.setUTCDate(d.getUTCDate() + 1);
+              }
+              
+              // Generate the next 4 trips for this route
+              for (let i = 0; i < 4; i++) {
+                const nextDate = new Date(d);
+                nextDate.setUTCDate(d.getUTCDate() + (i * 7));
+                
+                const day = String(nextDate.getUTCDate()).padStart(2, '0');
+                const month = String(nextDate.getUTCMonth() + 1).padStart(2, '0');
+                const year = nextDate.getUTCFullYear();
+                const dataIso = `${year}-${month}-${day}`;
+                
+                viagensFormatadas.push({
+                  route_id: r.id.toString(),
+                  trip_id: 'auto-generated', // Will be auto-corrected in gerar_pagamento
+                  origin: r.origin,
+                  destination: r.destination,
+                  date: dataIso,
+                  hour: r.hour ? r.hour.toISOString().substring(11, 16) : '08:00',
+                  price: r.speed_boat_price ? Number(r.speed_boat_price) : 0,
+                  tax: r.tax ? Number(r.tax) : 0,
+                  data_formatada: `${day}/${month}/${year} - ${r.week_day} (ID Rota: ${r.id})`
+                });
+              }
+            });
+            
+            // Sort by date ascending
+            viagensFormatadas.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+            
+            // Return top 10 options
+            return { viagens_disponiveis: viagensFormatadas.slice(0, 10) };
           } catch (error: any) {
-            console.error('Prisma Error buscar_rotas:', error.message);
-            return { error: 'Erro ao consultar rotas no sistema.' };
+            console.error('API Error buscar_rotas:', error.message);
+            return { error: 'Erro ao consultar viagens no sistema.' };
           }
         },
       },
       consultar_assentos: {
         description: 'Consulta as poltronas disponíveis para uma viagem específica em uma data.',
         parameters: z.object({
-          routeId: z.string().describe('O ID numérico da rota'),
+          routeId: z.string().describe('O ID numérico da rota (route_id)'),
           data: z.string().describe('Data da viagem no formato YYYY-MM-DD'),
         }),
         execute: async ({ routeId, data }) => {
+          console.log("TOOL CALL - consultar_assentos:", { routeId, data });
           try {
-            // Find the master trip for this route and date
-            const trip = await prisma.trips.findFirst({
-              where: {
-                master_route_id: BigInt(routeId),
-                date: new Date(data)
-              }
+            const response = await axios.get(`${API_BASE_URL}/routes/available_seats`, {
+              params: { route_id: routeId, date: data, web: 'true' }
             });
-
-            if (!trip) {
-              return { error: 'Viagem não encontrada para esta data. Solicite outra data.' };
-            }
-
-            // Find all reserved seats
-            const reservedSeats = await prisma.trip_seats.findMany({
-              where: {
-                trip_id: trip.id,
-                status: 1 // 1 means reserved/occupied
-              },
-              select: { number: true }
-            });
-
-            const occupiedNumbers = reservedSeats.map(s => s.number);
             
-            // Assume the boat has 50 seats for now
-            const totalSeats = 50;
-            const available = [];
-            for (let i = 1; i <= totalSeats; i++) {
-              if (!occupiedNumbers.includes(i)) {
-                available.push(i);
-              }
+            if (response.data.status === 'error') {
+               return { error: response.data.message || 'Viagem não encontrada.' };
             }
 
+            const available = response.data.available_seat_numbers || [];
+            
             return { 
-              trip_id: trip.id.toString(),
-              assentos_livres: available.slice(0, 10), // return top 10 to not overwhelm AI
-              mensagem: `Existem ${available.length} assentos livres. Os primeiros são: ${available.slice(0,10).join(', ')}`
+              assentos_livres: available,
+              mensagem: available.length > 0 ? `Existem ${available.length} assentos livres. Os assentos são: ${available.join(', ')}` : 'Nenhum assento disponível.'
             };
           } catch (error: any) {
-            console.error('Prisma Error consultar_assentos:', error.message);
+            console.error('API Error consultar_assentos:', error.response?.data || error.message);
+            if (error.response?.status === 404) {
+               return { error: 'Viagem não encontrada para a data informada. Verifique se a data escolhida cai no dia da semana correto para esta rota.' };
+            }
             return { error: 'Erro ao consultar poltronas no sistema.' };
           }
         },
       },
       gerar_pagamento: {
-        description: 'Gera a cobrança no sistema oficial Embarcar. Chama esta função APÓS o cliente confirmar os dados da viagem e poltrona.',
+        description: 'Gera a cobrança no sistema oficial Embarcar. Chama esta função APÓS o cliente confirmar os dados.',
         parameters: z.object({
-          routeId: z.string().describe('O ID numérico da rota selecionada'),
-          tripId: z.string().describe('O ID numérico da viagem selecionada retornado em consultar_assentos'),
-          origem: z.string(),
-          destino: z.string(),
-          data_viagem: z.string(),
-          price: z.number().describe('Valor total da passagem (sem taxa)'),
-          tax: z.number().describe('Valor da taxa de embarque'),
+          routeId: z.string().describe('O route_id da rota selecionada'),
+          tripId: z.string().describe('O trip_id da viagem selecionada retornado na busca'),
+          data_viagem: z.string().describe('Data da viagem (YYYY-MM-DD)'),
+          price: z.number().describe('Valor da passagem (speed_boat_price)'),
+          tax: z.number().describe('Valor da taxa (tax)'),
           seat: z.number().describe('Número da poltrona escolhida'),
           nome: z.string(),
           cpf: z.string(),
           telefone: z.string(),
+          nascimento: z.string().describe('Data de nascimento (YYYY-MM-DD)'),
+          forma_pagamento: z.enum(['PIX', 'CREDIT_CARD']).describe('Forma de pagamento escolhida pelo cliente')
         }),
-        execute: async ({ routeId, tripId, origem, destino, data_viagem, price, tax, seat, nome, cpf, telefone }) => {
+        execute: async (params) => {
+          console.log("TOOL CALL - gerar_pagamento:", params);
+          const { routeId, tripId, data_viagem, price, tax, seat, nome, cpf, telefone, nascimento, forma_pagamento } = params;
           try {
-            const rId = BigInt(routeId);
-            const tId = BigInt(tripId);
-            
-            // 1. Criar Asaas payment (Mock for now, should call Asaas API)
-            // Here we need to call Asaas directly to generate PIX copy-paste
-            const asaasPayload = {
-              customer: "cus_000000000000", // Would be real customer ID
-              billingType: "PIX",
-              value: Number(price) + Number(tax),
-              dueDate: new Date().toISOString().split('T')[0],
-              description: `Passagem: ${origem} -> ${destino}`
+            // Auto-correct trip_id by fetching the trip for the specific date
+            let finalTripId = tripId;
+            try {
+              const tripResponse = await axios.get(`${API_BASE_URL}/routes/available_seats`, {
+                params: { route_id: routeId, date: data_viagem, web: 'true' }
+              });
+              if (tripResponse.data.trip?.id) {
+                finalTripId = tripResponse.data.trip.id.toString();
+              }
+            } catch (e) {
+              console.log('Failed to auto-correct tripId:', e);
+            }
+
+            const payload = {
+              route_id: routeId,
+              trip_id: finalTripId,
+              date: data_viagem,
+              payment_method: forma_pagamento,
+              installment_count: 1,
+              search_trip: "one_way",
+              seat_numbers: [seat],
+              name: nome,
+              phone: telefone,
+              customers: { "1": nome },
+              documents: { "1": cpf },
+              document_types: { "1": "cpf" },
+              birthdays: { "1": nascimento },
+              phones: { "1": telefone },
+              data: JSON.stringify([
+                { field: "speed_boat_price", quantity: 1, price: Number(price), tax: Number(tax) }
+              ])
             };
-            
-            const asaasResponse = await axios.post('https://sandbox.asaas.com/api/v3/payments', asaasPayload, {
-              headers: {
-                'access_token': process.env.ASAAS_API_KEY || '$aact_...',
-                'Content-Type': 'application/json'
-              }
-            }).catch(e => null);
-            
-            const asaasId = asaasResponse?.data?.id || 'pay_mock_' + Math.floor(Math.random()*10000);
-            const pixCode = asaasResponse?.data?.pixCopyPaste || '00020101021126580014br.gov.bcb.pix...';
 
-            // 2. Create Order in Database
-            const order = await prisma.orders.create({
-              data: {
-                route_id: rId,
-                asaas_id: asaasId,
-                created_at: new Date(),
-                updated_at: new Date(),
-                status: 'pending',
-                code: `AI-${Math.floor(Math.random()*100000)}`,
-                date: new Date(data_viagem),
-                origin: origem,
-                destination: destino,
-                username: nome,
-                emergency_contact_name: nome,
-                emergency_contact_phone: telefone,
-                tax: tax,
-                full_price: price,
-                price: price
-              }
+            const response = await axios.post(`${API_BASE_URL}/orders/create`, payload, {
+               headers: { 'Content-Type': 'application/json' }
             });
 
-            // 3. Create Order Customer
-            const orderCustomer = await prisma.order_customers.create({
-              data: {
-                order_id: order.id,
-                customer_id: 1, // Fallback customer ID for now, ideally find or create real customer
-                issuer_id: 1,   // Fallback issuer ID
-                ticket_price: price,
-                tax_price: tax,
-                seat_number: seat,
-                trip_id: tId,
-                status: 1
-              }
-            });
-
-            // 4. Reserve the seat
-            await prisma.trip_seats.create({
-              data: {
-                status: 1, // 1 = reserved
-                number: seat,
-                created_at: new Date(),
-                updated_at: new Date(),
-                trip_id: tId,
-                order_customer_id: orderCustomer.id,
-                route_id: rId
-              }
-            });
-
-            return { 
-              sucesso: true, 
-              mensagem: 'Reserva criada com sucesso!',
-              pix_copia_e_cola: pixCode,
-              order_code: order.code,
-              instrucoes: 'Por favor, realize o pagamento via PIX Copia e Cola acima. Assim que for confirmado, enviaremos o bilhete.'
-            };
+            if (response.data.status === 'ok' || response.data.status === 200 || response.status === 200) {
+               return { 
+                 sucesso: true, 
+                 mensagem: 'Reserva criada com sucesso!',
+                 payment_link: response.data.payment_link,
+                 order_id: response.data.id,
+                 instrucoes: 'Por favor, realize o pagamento acessando o link acima. Assim que for confirmado, enviaremos o bilhete.'
+               };
+            } else {
+               return { error: response.data.message || 'Erro ao gerar pagamento.' };
+            }
           } catch (error: any) {
-            console.error('Prisma Error gerar_pagamento:', error.message);
-            return { error: 'Erro ao gerar pedido no sistema.' };
+            console.error('API Error gerar_pagamento:', error.response?.data || error.message);
+            return { error: error.response?.data?.message || 'Erro ao gerar pedido no sistema. Verifique se a data, poltrona, preços e CPF estão corretos.' };
           }
         },
       }
