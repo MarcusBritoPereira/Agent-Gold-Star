@@ -378,21 +378,12 @@ async function handleInteractiveAction(session: any, from: string, interactiveId
   }
 
   if (interactiveId === 'pagamento_credito') {
-    await sendInteractiveButtons(from, "Em quantas vezes deseja pagar no cartão de crédito?", [
-      { id: 'cartao_1x', title: '1x' },
-      { id: 'cartao_2x', title: '2x' }
-    ]);
-    return;
-  }
-
-  if (interactiveId === 'cartao_1x' || interactiveId === 'cartao_2x') {
-    const installments = interactiveId === 'cartao_2x' ? 2 : 1;
     await prisma.session.update({
       where: { id: session.id },
       data: { state: 'aguardando_pagamento', paymentMethod: 'credit_card' }
     });
     await sendWhatsAppMessage(from, "Aguarde um momento enquanto geramos seu link de pagamento no cartão.");
-    await gerarLinkPagamento(session.id, from, 'CREDIT_CARD', installments);
+    await gerarLinkPagamento(session.id, from, 'CREDIT_CARD', 1);
     return;
   }
 
