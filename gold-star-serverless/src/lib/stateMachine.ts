@@ -238,11 +238,10 @@ async function handleInteractiveAction(session: any, from: string, interactiveId
       const routes = await prisma.routes.findMany({ where: { active: true }, select: { origin: true } });
       const uniqueOrigins = Array.from(new Set(routes.map((r: any) => r.origin).filter(Boolean))) as string[];
       
-      const listItems = uniqueOrigins.slice(0, 9).map((origin: string) => ({
+      const listItems = uniqueOrigins.slice(0, 10).map((origin: string) => ({
         id: `origem_${origin}`,
         title: origin.substring(0, 24)
       }));
-      listItems.push({ id: 'origem_outra', title: 'Outra origem' });
 
       await sendInteractiveList(
         from, 
@@ -282,11 +281,10 @@ async function handleInteractiveAction(session: any, from: string, interactiveId
       const uniqueDest = Array.from(new Set(routes.map((r: any) => r.destination).filter(Boolean))) as string[];
       
       if (uniqueDest.length > 0) {
-        const listItems = uniqueDest.slice(0, 9).map((dest: string) => ({
+        const listItems = uniqueDest.slice(0, 10).map((dest: string) => ({
           id: `destino_${dest}`,
           title: dest.substring(0, 24)
         }));
-        listItems.push({ id: 'destino_outro', title: 'Outro destino' });
 
         await sendInteractiveList(from, "Agora escolha o destino da viagem:", "Ver destinos", listItems);
       } else {
