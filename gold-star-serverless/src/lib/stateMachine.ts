@@ -4,6 +4,51 @@ import axios from 'axios';
 
 const API_BASE_URL = process.env.API_BASE_URL || 'https://lanchasgoldstar.com.br/api';
 
+function getAsaasConfig() {
+  const apiKey = process.env.ASAAS_API_KEY;
+
+  if (!apiKey) {
+    throw new Error('ASAAS_API_KEY is not configured');
+  }
+
+  const env = process.env.ASAAS_ENV?.toLowerCase();
+  const isSandbox = env ? env === 'sandbox' || env === 'homologacao' || env === 'homologation' : apiKey.includes('hmlg');
+
+  return {
+    apiKey,
+    baseUrl: isSandbox ? 'https://sandbox.asaas.com/api/v3' : 'https://api.asaas.com/v3'
+  };
+}
+
+function extractAsaasPaymentId(data: any) {
+  return data?.asaas_id || data?.asaasId || data?.payment_id || data?.paymentId || data?.payment?.id || data?.charge?.id;
+}
+
+function extractAsaasPaymentUrl(data: any) {
+  return data?.payment_link || data?.paymentLink || data?.url || data?.invoiceUrl || data?.invoice_url || data?.payment?.invoiceUrl || data?.charge?.invoiceUrl;
+}
+
+async function getAsaasPaymentLink(paymentId: string) {
+  const { apiKey, baseUrl } = getAsaasConfig();
+  const paymentResponse = await axios.get(`${baseUrl}/payments/${paymentId}`, {
+    headers: { access_token: apiKey }
+  });
+
+  return extractAsaasPaymentUrl(paymentResponse.data);
+}
+
+async function ensureOrderLinkedToAsaas(orderId: string, paymentId: string) {
+  if (!/^\d+$/.test(orderId)) {
+    throw new Error(`Invalid orderId returned by backend: ${orderId}`);
+  }
+
+  const parsedOrderId = BigInt(orderId);
+  await prisma.orders.update({
+    where: { id: parsedOrderId },
+    data: { asaas_id: paymentId }
+  });
+}
+
 function validateName(name: string) {
   const parts = name.trim().split(/\s+/);
   return parts.length >= 2;
@@ -607,94 +652,26 @@ async function gerarLinkPagamento(sessionId: string, from: string, billingType: 
         data: { orderId }
       });
 
-      // The backend /orders/create already generates the Asaas payment link and sends it via email.
-      // We will just extract it from the response to send it via WhatsApp, preventing duplicate links.
-      let paymentUrl = response.data.url || response.data.payment_link;
+      // The backend /orders/create is the single owner of the Asaas charge creation.
+      // We reuse the Asaas charge/link it created instead of creating a second
+      // payment directly here, keeping orders.asaas_id aligned with webhook events.
+      const asaasPaymentId = extractAsaasPaymentId(response.data);
+      let paymentUrl = extractAsaasPaymentUrl(response.data);
       const valorTotal = Number(session.price || 0) + Number(session.tax || 0);
 
-      const apiKey = (process.env.ASAAS_API_KEY || '').replace(/^\$+/, '$');
-      const asaasBaseUrl = apiKey.includes('hmlg') ? 'https://sandbox.asaas.com/api/v3' : 'https://api.asaas.com/v3';
-
-      if (billingType === 'CREDIT_CARD') {
+      if (asaasPaymentId) {
         try {
-          console.log(`[ASAAS CREDIT CARD FIX] Generating Asaas Payment Link directly for value ${valorTotal}`);
-          
-          // 1. Find or create Customer
-          let customerId = '';
-          const customerSearch = await axios.get(`${asaasBaseUrl}/customers`, {
-            params: { cpfCnpj: session.passengerCpf },
-            headers: { access_token: apiKey }
-          });
-
-          if (customerSearch.data && customerSearch.data.data && customerSearch.data.data.length > 0) {
-            customerId = customerSearch.data.data[0].id;
-          } else {
-            const createCustomer = await axios.post(`${asaasBaseUrl}/customers`, {
-              name: session.passengerName,
-              cpfCnpj: session.passengerCpf,
-              phone: session.passengerPhone
-            }, {
-              headers: { access_token: apiKey }
-            });
-            customerId = createCustomer.data.id;
-          }
-
-          // 2. Create Charge
-          // Formata data atual caso tripDate seja inválido ou vazio
-          const dueDate = (session.tripDate && session.tripDate.length === 10) ? session.tripDate : new Date().toISOString().split('T')[0];
-
-          const chargePayload: any = {
-            customer: customerId,
-            billingType: 'CREDIT_CARD',
-            dueDate: dueDate,
-            description: `Passagem Gold Star - ${session.origin} para ${session.destination}`
-          };
-
-          if (installments > 1) {
-            chargePayload.installmentCount = installments;
-            chargePayload.installmentValue = Number((valorTotal / installments).toFixed(2));
-          } else {
-            chargePayload.value = valorTotal;
-          }
-
-          const chargeResponse = await axios.post(`${asaasBaseUrl}/payments`, chargePayload, {
-            headers: { access_token: apiKey }
-          });
-          
-          paymentUrl = chargeResponse.data.invoiceUrl;
-          console.log(`[ASAAS CREDIT CARD FIX] New paymentUrl generated: ${paymentUrl}`);
-
+          await ensureOrderLinkedToAsaas(orderId, asaasPaymentId);
         } catch (err: any) {
-          console.error(`[ASAAS CREDIT CARD FIX] Error generating credit card charge:`, err.response?.data || err.message);
-          // If error occurs, it will fallback to backend's paymentUrl
+          console.error('[ASAAS LINK] Failed to link order to Asaas payment:', err.response?.data || err.message);
         }
-      } else {
-        // Para PIX e demais casos, usamos a lógica original (que já corrigia installments no backend)
-        console.log(`[ASAAS FIX] Original paymentUrl from backend: ${paymentUrl}`);
-        if (paymentUrl && paymentUrl.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i)) {
-          const installmentId = paymentUrl.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i)![0];
-          console.log(`[ASAAS FIX] Detected installment ID: ${installmentId}`);
-          try {
-            console.log(`[ASAAS FIX] Fetching payments for installment using baseUrl: ${asaasBaseUrl}`);
-            
-            const paymentsRes = await axios.get(`${asaasBaseUrl}/payments?installment=${installmentId}`, {
-              headers: { access_token: apiKey }
-            });
-            
-            if (paymentsRes.data && paymentsRes.data.data && paymentsRes.data.data.length > 0) {
-              // Find the first installment (Parcela 1)
-              const firstParcela = paymentsRes.data.data.find((p: any) => p.installmentNumber === 1) || paymentsRes.data.data[0];
-              paymentUrl = firstParcela.invoiceUrl;
-              console.log(`[ASAAS FIX] Replaced paymentUrl with Parcela 1: ${paymentUrl}`);
-            } else {
-              console.log(`[ASAAS FIX] No payments found for installment ${installmentId}`);
-            }
-          } catch (err: any) {
-            console.error(`[ASAAS FIX] Failed to fetch installment payments. Error: ${err.message}`);
-            if (err.response) {
-              console.error(`[ASAAS FIX] Response data:`, err.response.data);
-            }
-          }
+      }
+
+      if (!paymentUrl && asaasPaymentId) {
+        try {
+          paymentUrl = await getAsaasPaymentLink(asaasPaymentId);
+        } catch (err: any) {
+          console.error('[ASAAS LINK] Failed to fetch Asaas payment link:', err.response?.data || err.message);
         }
       }
 
