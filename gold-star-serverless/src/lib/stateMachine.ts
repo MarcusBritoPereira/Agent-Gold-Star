@@ -4,6 +4,62 @@ import axios from 'axios';
 
 const API_BASE_URL = process.env.API_BASE_URL || 'https://lanchasgoldstar.com.br/api';
 
+function getAsaasConfig() {
+  const apiKey = process.env.ASAAS_API_KEY;
+
+  if (!apiKey) {
+    throw new Error('ASAAS_API_KEY is not configured');
+  }
+
+  const env = process.env.ASAAS_ENV?.toLowerCase();
+  const isSandbox = env ? env === 'sandbox' || env === 'homologacao' || env === 'homologation' : apiKey.includes('hmlg');
+
+  return {
+    apiKey,
+    baseUrl: isSandbox ? 'https://sandbox.asaas.com/api/v3' : 'https://api.asaas.com/v3'
+  };
+}
+
+function extractAsaasPaymentId(data: any) {
+  return data?.asaas_id || data?.asaasId || data?.payment_id || data?.paymentId || data?.payment?.id || data?.charge?.id;
+}
+
+function extractAsaasPaymentUrl(data: any) {
+  return data?.payment_link || data?.paymentLink || data?.url || data?.invoiceUrl || data?.invoice_url || data?.payment?.invoiceUrl || data?.charge?.invoiceUrl;
+}
+
+async function getAsaasPaymentLink(paymentId: string) {
+  const { apiKey, baseUrl } = getAsaasConfig();
+  const paymentResponse = await axios.get(`${baseUrl}/payments/${paymentId}`, {
+    headers: { access_token: apiKey }
+  });
+
+  return extractAsaasPaymentUrl(paymentResponse.data);
+}
+
+async function ensureOrderLinkedToAsaas(orderId: string, paymentId: string) {
+  if (!/^\d+$/.test(orderId)) {
+    throw new Error(`Invalid orderId returned by backend: ${orderId}`);
+  }
+
+  const parsedOrderId = BigInt(orderId);
+  await prisma.orders.update({
+    where: { id: parsedOrderId },
+    data: { asaas_id: paymentId }
+  });
+}
+
+async function getOrderAsaasPaymentId(orderId: string) {
+  if (!/^\d+$/.test(orderId)) return null;
+
+  const order = await prisma.orders.findUnique({
+    where: { id: BigInt(orderId) },
+    select: { asaas_id: true }
+  });
+
+  return order?.asaas_id || null;
+}
+
 function validateName(name: string) {
   const parts = name.trim().split(/\s+/);
   return parts.length >= 2;
@@ -25,6 +81,35 @@ function validateDate(dateStr: string) {
   return true;
 }
 
+async function getOrCreateSession(from: string) {
+  const sessionId = `session_${from}`;
+  let session = await prisma.session.findUnique({ where: { id: sessionId } });
+
+  if (session) {
+    return session;
+  }
+
+  const user = await prisma.user.upsert({
+    where: { phone: from },
+    update: {},
+    create: { phone: from }
+  });
+
+  session = await prisma.session.create({
+    data: { id: sessionId, userId: user.id, state: 'default' }
+  });
+
+  return session;
+}
+
+async function sendMainMenu(to: string) {
+  return sendInteractiveButtons(to, "Olá! Bem-vindo ao atendimento da Gold Star.\n\nComo posso ajudar?", [
+    { id: 'comprar_passagem', title: 'Comprar passagem' },
+    { id: 'consultar_bilhete', title: 'Consultar bilhete' },
+    { id: 'falar_atendente', title: 'Falar com atendente' }
+  ]);
+}
+
 export async function handleIncomingMessage(from: string, message: any) {
   const sessionId = `session_${from}`;
   let session = await prisma.session.findUnique({ where: { id: sessionId } });
@@ -44,20 +129,24 @@ export async function handleIncomingMessage(from: string, message: any) {
         data: { state: 'default' }
       });
     } else {
-      session = await prisma.session.create({
-        data: { id: sessionId, userId: 'default', state: 'default' }
-      });
+      session = await getOrCreateSession(from);
     }
 
-    await sendInteractiveButtons(from, "Olá! Bem-vindo ao atendimento da Gold Star.\n\nComo posso ajudar?", [
-      { id: 'comprar_passagem', title: 'Comprar passagem' },
-      { id: 'consultar_bilhete', title: 'Consultar bilhete' },
-      { id: 'falar_atendente', title: 'Falar com atendente' }
-    ]);
+    await sendMainMenu(from);
     return;
   }
 
-  if (!session) return;
+  if (!session) {
+    session = await getOrCreateSession(from);
+
+    if (interactiveId) {
+      await handleInteractiveAction(session, from, interactiveId);
+      return;
+    }
+
+    await sendMainMenu(from);
+    return;
+  }
 
   if (interactiveId) {
     await handleInteractiveAction(session, from, interactiveId);
@@ -66,7 +155,10 @@ export async function handleIncomingMessage(from: string, message: any) {
 
   if (type === 'text' && msgBody) {
     await processTextByState(session, from, msgBody);
+    return;
   }
+
+  await sendWhatsAppMessage(from, "Não consegui entender essa mensagem. Digite 'Menu' para ver as opções de atendimento.");
 }
 
 async function handleInteractiveAction(session: any, from: string, interactiveId: string) {
@@ -330,6 +422,11 @@ async function handleInteractiveAction(session: any, from: string, interactiveId
     await sendWhatsAppMessage(from, "Informe o CPF do passageiro.\n\nExemplo:\n16178319215");
     return;
   }
+
+  if (interactiveId.startsWith('reserva_')) {
+    await consultarBilhete(interactiveId.replace('reserva_', ''), null, from);
+    return;
+  }
 }
 
 async function processTextByState(session: any, from: string, text: string) {
@@ -417,6 +514,8 @@ async function processTextByState(session: any, from: string, text: string) {
     await consultarBilhete(null, text.replace(/\D/g, ''), from);
     return;
   }
+
+  await sendMainMenu(from);
 }
 
 // Helpers
@@ -593,6 +692,15 @@ async function gerarLinkPagamento(sessionId: string, from: string, billingType: 
       ])
     };
 
+    console.info('[ASAAS ORDER] Creating order via backend', {
+      sessionId,
+      routeId: session.routeId,
+      tripDate: session.tripDate,
+      billingType,
+      installments,
+      seat: session.seat
+    });
+
     const response = await axios.post(`${API_BASE_URL}/orders/create`, payload, {
       headers: { 'Content-Type': 'application/json' }
     });
@@ -600,6 +708,18 @@ async function gerarLinkPagamento(sessionId: string, from: string, billingType: 
     const isSuccess = response.data.status === 'success' || response.data.status === 'ok' || response.status === 200;
     if (isSuccess) {
       const orderId = String(response.data.id || response.data.order_id);
+      if (!/^\d+$/.test(orderId)) {
+        console.error('[ASAAS ORDER] Backend did not return a valid numeric order id', { sessionId, response: response.data });
+        await sendWhatsAppMessage(from, `Não foi possível identificar a reserva criada. Digite 'Menu' para tentar novamente.`);
+        return;
+      }
+
+      console.info('[ASAAS ORDER] Backend order created', {
+        sessionId,
+        orderId,
+        returnedAsaasPaymentId: extractAsaasPaymentId(response.data),
+        returnedPaymentUrl: Boolean(extractAsaasPaymentUrl(response.data))
+      });
       
       // Update session with orderId
       await prisma.session.update({
@@ -607,94 +727,34 @@ async function gerarLinkPagamento(sessionId: string, from: string, billingType: 
         data: { orderId }
       });
 
-      // The backend /orders/create already generates the Asaas payment link and sends it via email.
-      // We will just extract it from the response to send it via WhatsApp, preventing duplicate links.
-      let paymentUrl = response.data.url || response.data.payment_link;
+      // The backend /orders/create is the single owner of the Asaas charge creation.
+      // We reuse the Asaas charge/link it created instead of creating a second
+      // payment directly here, keeping orders.asaas_id aligned with webhook events.
+      let asaasPaymentId = extractAsaasPaymentId(response.data);
+      let paymentUrl = extractAsaasPaymentUrl(response.data);
       const valorTotal = Number(session.price || 0) + Number(session.tax || 0);
 
-      const apiKey = (process.env.ASAAS_API_KEY || '').replace(/^\$+/, '$');
-      const asaasBaseUrl = apiKey.includes('hmlg') ? 'https://sandbox.asaas.com/api/v3' : 'https://api.asaas.com/v3';
+      if (!asaasPaymentId) {
+        asaasPaymentId = await getOrderAsaasPaymentId(orderId);
+      }
 
-      if (billingType === 'CREDIT_CARD') {
+      if (asaasPaymentId) {
         try {
-          console.log(`[ASAAS CREDIT CARD FIX] Generating Asaas Payment Link directly for value ${valorTotal}`);
-          
-          // 1. Find or create Customer
-          let customerId = '';
-          const customerSearch = await axios.get(`${asaasBaseUrl}/customers`, {
-            params: { cpfCnpj: session.passengerCpf },
-            headers: { access_token: apiKey }
-          });
-
-          if (customerSearch.data && customerSearch.data.data && customerSearch.data.data.length > 0) {
-            customerId = customerSearch.data.data[0].id;
-          } else {
-            const createCustomer = await axios.post(`${asaasBaseUrl}/customers`, {
-              name: session.passengerName,
-              cpfCnpj: session.passengerCpf,
-              phone: session.passengerPhone
-            }, {
-              headers: { access_token: apiKey }
-            });
-            customerId = createCustomer.data.id;
-          }
-
-          // 2. Create Charge
-          // Formata data atual caso tripDate seja inválido ou vazio
-          const dueDate = (session.tripDate && session.tripDate.length === 10) ? session.tripDate : new Date().toISOString().split('T')[0];
-
-          const chargePayload: any = {
-            customer: customerId,
-            billingType: 'CREDIT_CARD',
-            dueDate: dueDate,
-            description: `Passagem Gold Star - ${session.origin} para ${session.destination}`
-          };
-
-          if (installments > 1) {
-            chargePayload.installmentCount = installments;
-            chargePayload.installmentValue = Number((valorTotal / installments).toFixed(2));
-          } else {
-            chargePayload.value = valorTotal;
-          }
-
-          const chargeResponse = await axios.post(`${asaasBaseUrl}/payments`, chargePayload, {
-            headers: { access_token: apiKey }
-          });
-          
-          paymentUrl = chargeResponse.data.invoiceUrl;
-          console.log(`[ASAAS CREDIT CARD FIX] New paymentUrl generated: ${paymentUrl}`);
-
+          await ensureOrderLinkedToAsaas(orderId, asaasPaymentId);
+          console.info('[ASAAS ORDER] Order linked to Asaas payment', { sessionId, orderId, asaasPaymentId });
         } catch (err: any) {
-          console.error(`[ASAAS CREDIT CARD FIX] Error generating credit card charge:`, err.response?.data || err.message);
-          // If error occurs, it will fallback to backend's paymentUrl
+          console.error('[ASAAS LINK] Failed to link order to Asaas payment:', err.response?.data || err.message);
         }
       } else {
-        // Para PIX e demais casos, usamos a lógica original (que já corrigia installments no backend)
-        console.log(`[ASAAS FIX] Original paymentUrl from backend: ${paymentUrl}`);
-        if (paymentUrl && paymentUrl.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i)) {
-          const installmentId = paymentUrl.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i)![0];
-          console.log(`[ASAAS FIX] Detected installment ID: ${installmentId}`);
-          try {
-            console.log(`[ASAAS FIX] Fetching payments for installment using baseUrl: ${asaasBaseUrl}`);
-            
-            const paymentsRes = await axios.get(`${asaasBaseUrl}/payments?installment=${installmentId}`, {
-              headers: { access_token: apiKey }
-            });
-            
-            if (paymentsRes.data && paymentsRes.data.data && paymentsRes.data.data.length > 0) {
-              // Find the first installment (Parcela 1)
-              const firstParcela = paymentsRes.data.data.find((p: any) => p.installmentNumber === 1) || paymentsRes.data.data[0];
-              paymentUrl = firstParcela.invoiceUrl;
-              console.log(`[ASAAS FIX] Replaced paymentUrl with Parcela 1: ${paymentUrl}`);
-            } else {
-              console.log(`[ASAAS FIX] No payments found for installment ${installmentId}`);
-            }
-          } catch (err: any) {
-            console.error(`[ASAAS FIX] Failed to fetch installment payments. Error: ${err.message}`);
-            if (err.response) {
-              console.error(`[ASAAS FIX] Response data:`, err.response.data);
-            }
-          }
+        console.warn('[ASAAS ORDER] Backend did not return or persist an Asaas payment id', { sessionId, orderId });
+      }
+
+      if (!paymentUrl && asaasPaymentId) {
+        try {
+          paymentUrl = await getAsaasPaymentLink(asaasPaymentId);
+          console.info('[ASAAS LINK] Payment link fetched from Asaas', { sessionId, orderId, asaasPaymentId });
+        } catch (err: any) {
+          console.error('[ASAAS LINK] Failed to fetch Asaas payment link:', err.response?.data || err.message);
         }
       }
 
@@ -712,11 +772,16 @@ async function gerarLinkPagamento(sessionId: string, from: string, billingType: 
         else msg += '\n';
         msg += `Toque no link abaixo para pagar:\n${paymentUrl}`;
         
-        await sendWhatsAppMessage(from, msg);
+        const sent = await sendWhatsAppMessage(from, msg);
+        if (!sent) {
+          console.error('[ASAAS LINK] Failed to send payment link via WhatsApp', { sessionId, orderId, asaasPaymentId });
+        }
       } else {
+        console.error('[ASAAS LINK] Payment URL missing after backend/Asaas lookup', { sessionId, orderId, asaasPaymentId });
         await sendWhatsAppMessage(from, `Não foi possível gerar o link de pagamento. Digite 'Menu' para tentar novamente.`);
       }
     } else {
+      console.error('[ASAAS ORDER] Backend failed to create order', { sessionId, status: response.status, response: response.data });
       await sendWhatsAppMessage(from, `Não foi possível gerar a reserva no sistema. Digite 'Menu' para tentar novamente.`);
     }
   } catch (error) {
@@ -727,10 +792,57 @@ async function gerarLinkPagamento(sessionId: string, from: string, billingType: 
 
 async function consultarBilhete(reservaId: string | null, documento: string | null, from: string) {
   try {
-    // In a real scenario, this would query your API. We'll search local sessions first for demonstration.
-    // Replace with real backend API request: axios.get(`${API_BASE_URL}/orders/find`, { params: { ... } })
-    
-    let whereClause: any = { ticketPdfUrl: { not: null } };
+    console.info('[TICKET LOOKUP] Searching ticket', { reservaId, documento: documento ? '***' : null });
+
+    const orderWhere: any = {};
+    if (reservaId && /^\d+$/.test(reservaId)) {
+      orderWhere.id = BigInt(reservaId);
+    }
+    if (documento) {
+      orderWhere.order_customers = {
+        some: {
+          customers: {
+            document: documento
+          }
+        }
+      };
+    }
+
+    const orders = Object.keys(orderWhere).length > 0 ? await prisma.orders.findMany({
+      where: orderWhere,
+      include: {
+        order_customers: {
+          include: {
+            customers: true
+          }
+        }
+      },
+      orderBy: { created_at: 'desc' },
+      take: 5
+    }) : [];
+
+    if (orders.length > 0) {
+      if (orders.length === 1) {
+        const order = orders[0];
+        const passenger = order.order_customers[0]?.customers?.name || order.emergency_contact_name || order.username || 'Passageiro';
+        const seat = order.order_customers[0]?.seat_number || 'N/A';
+        const dataFormatada = order.date ? new Date(order.date.getTime() + order.date.getTimezoneOffset() * 60000).toLocaleDateString('pt-BR') : '';
+        const status = order.status === 'approved' ? 'Emitido' : 'Aguardando pagamento';
+        const msg = `Bilhete encontrado.\n\nReserva: ${order.id}\nPassageiro: ${passenger}\nRota: ${order.origin} → ${order.destination}\nData: ${dataFormatada}\nPoltrona: ${seat}\nStatus: ${status}\n\n${order.status === 'approved' ? 'Apresente este bilhete no momento do embarque.' : 'O bilhete será emitido após a confirmação do pagamento.'}`;
+        await sendWhatsAppMessage(from, msg);
+        return;
+      }
+
+      const listItems = orders.slice(0, 10).map((order: any) => ({
+        id: `reserva_${order.id.toString()}`,
+        title: `Reserva ${order.id.toString()}`.substring(0, 24),
+        description: `${order.origin || ''} → ${order.destination || ''}`.substring(0, 72)
+      }));
+      await sendInteractiveList(from, "Encontrei mais de uma reserva para este documento. Escolha qual deseja consultar:", "Ver reservas", listItems);
+      return;
+    }
+
+    let whereClause: any = {};
     if (reservaId) whereClause.orderId = reservaId;
     if (documento) whereClause.passengerCpf = documento;
 

@@ -494,15 +494,18 @@ model Session {
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
   hora           String?
+  orderId        String?
   passengerCpf   String?
   passengerDob   String?
   passengerName  String?
   passengerPhone String?
+  paymentLink    String?
   price          Float?
   routeId        String?
   seat           String?
   state          String?
   tax            Float?
+  ticketPdfUrl   String?
   tripDate       String?
   messages       Message[]
   user           User      @relation(fields: [userId], references: [id])
