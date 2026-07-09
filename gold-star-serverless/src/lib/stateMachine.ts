@@ -81,6 +81,35 @@ function validateDate(dateStr: string) {
   return true;
 }
 
+async function getOrCreateSession(from: string) {
+  const sessionId = `session_${from}`;
+  let session = await prisma.session.findUnique({ where: { id: sessionId } });
+
+  if (session) {
+    return session;
+  }
+
+  const user = await prisma.user.upsert({
+    where: { phone: from },
+    update: {},
+    create: { phone: from }
+  });
+
+  session = await prisma.session.create({
+    data: { id: sessionId, userId: user.id, state: 'default' }
+  });
+
+  return session;
+}
+
+async function sendMainMenu(to: string) {
+  return sendInteractiveButtons(to, "Olá! Bem-vindo ao atendimento da Gold Star.\n\nComo posso ajudar?", [
+    { id: 'comprar_passagem', title: 'Comprar passagem' },
+    { id: 'consultar_bilhete', title: 'Consultar bilhete' },
+    { id: 'falar_atendente', title: 'Falar com atendente' }
+  ]);
+}
+
 export async function handleIncomingMessage(from: string, message: any) {
   const sessionId = `session_${from}`;
   let session = await prisma.session.findUnique({ where: { id: sessionId } });
@@ -100,20 +129,24 @@ export async function handleIncomingMessage(from: string, message: any) {
         data: { state: 'default' }
       });
     } else {
-      session = await prisma.session.create({
-        data: { id: sessionId, userId: 'default', state: 'default' }
-      });
+      session = await getOrCreateSession(from);
     }
 
-    await sendInteractiveButtons(from, "Olá! Bem-vindo ao atendimento da Gold Star.\n\nComo posso ajudar?", [
-      { id: 'comprar_passagem', title: 'Comprar passagem' },
-      { id: 'consultar_bilhete', title: 'Consultar bilhete' },
-      { id: 'falar_atendente', title: 'Falar com atendente' }
-    ]);
+    await sendMainMenu(from);
     return;
   }
 
-  if (!session) return;
+  if (!session) {
+    session = await getOrCreateSession(from);
+
+    if (interactiveId) {
+      await handleInteractiveAction(session, from, interactiveId);
+      return;
+    }
+
+    await sendMainMenu(from);
+    return;
+  }
 
   if (interactiveId) {
     await handleInteractiveAction(session, from, interactiveId);
@@ -122,7 +155,10 @@ export async function handleIncomingMessage(from: string, message: any) {
 
   if (type === 'text' && msgBody) {
     await processTextByState(session, from, msgBody);
+    return;
   }
+
+  await sendWhatsAppMessage(from, "Não consegui entender essa mensagem. Digite 'Menu' para ver as opções de atendimento.");
 }
 
 async function handleInteractiveAction(session: any, from: string, interactiveId: string) {
@@ -478,6 +514,8 @@ async function processTextByState(session: any, from: string, text: string) {
     await consultarBilhete(null, text.replace(/\D/g, ''), from);
     return;
   }
+
+  await sendMainMenu(from);
 }
 
 // Helpers

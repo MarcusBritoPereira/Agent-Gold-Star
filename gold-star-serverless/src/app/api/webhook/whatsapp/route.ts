@@ -40,8 +40,18 @@ export async function POST(request: Request) {
             if (change.value?.messages) {
               for (const message of change.value.messages) {
                 const from = message.from;
-                // Let the state machine handle EVERYTHING for each message
-                await handleIncomingMessage(from, message);
+                try {
+                  // Let the state machine handle EVERYTHING for each message.
+                  // Keep processing the rest of the webhook batch if one contact fails.
+                  await handleIncomingMessage(from, message);
+                } catch (messageError) {
+                  console.error('Error handling individual WhatsApp message:', {
+                    from,
+                    messageId: message.id,
+                    type: message.type,
+                    error: messageError
+                  });
+                }
               }
             }
           }
