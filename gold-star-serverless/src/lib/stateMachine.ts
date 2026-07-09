@@ -49,6 +49,17 @@ async function ensureOrderLinkedToAsaas(orderId: string, paymentId: string) {
   });
 }
 
+async function getOrderAsaasPaymentId(orderId: string) {
+  if (!/^\d+$/.test(orderId)) return null;
+
+  const order = await prisma.orders.findUnique({
+    where: { id: BigInt(orderId) },
+    select: { asaas_id: true }
+  });
+
+  return order?.asaas_id || null;
+}
+
 function validateName(name: string) {
   const parts = name.trim().split(/\s+/);
   return parts.length >= 2;
@@ -375,6 +386,11 @@ async function handleInteractiveAction(session: any, from: string, interactiveId
     await sendWhatsAppMessage(from, "Informe o CPF do passageiro.\n\nExemplo:\n16178319215");
     return;
   }
+
+  if (interactiveId.startsWith('reserva_')) {
+    await consultarBilhete(interactiveId.replace('reserva_', ''), null, from);
+    return;
+  }
 }
 
 async function processTextByState(session: any, from: string, text: string) {
@@ -638,6 +654,15 @@ async function gerarLinkPagamento(sessionId: string, from: string, billingType: 
       ])
     };
 
+    console.info('[ASAAS ORDER] Creating order via backend', {
+      sessionId,
+      routeId: session.routeId,
+      tripDate: session.tripDate,
+      billingType,
+      installments,
+      seat: session.seat
+    });
+
     const response = await axios.post(`${API_BASE_URL}/orders/create`, payload, {
       headers: { 'Content-Type': 'application/json' }
     });
@@ -645,6 +670,18 @@ async function gerarLinkPagamento(sessionId: string, from: string, billingType: 
     const isSuccess = response.data.status === 'success' || response.data.status === 'ok' || response.status === 200;
     if (isSuccess) {
       const orderId = String(response.data.id || response.data.order_id);
+      if (!/^\d+$/.test(orderId)) {
+        console.error('[ASAAS ORDER] Backend did not return a valid numeric order id', { sessionId, response: response.data });
+        await sendWhatsAppMessage(from, `Não foi possível identificar a reserva criada. Digite 'Menu' para tentar novamente.`);
+        return;
+      }
+
+      console.info('[ASAAS ORDER] Backend order created', {
+        sessionId,
+        orderId,
+        returnedAsaasPaymentId: extractAsaasPaymentId(response.data),
+        returnedPaymentUrl: Boolean(extractAsaasPaymentUrl(response.data))
+      });
       
       // Update session with orderId
       await prisma.session.update({
@@ -655,21 +692,29 @@ async function gerarLinkPagamento(sessionId: string, from: string, billingType: 
       // The backend /orders/create is the single owner of the Asaas charge creation.
       // We reuse the Asaas charge/link it created instead of creating a second
       // payment directly here, keeping orders.asaas_id aligned with webhook events.
-      const asaasPaymentId = extractAsaasPaymentId(response.data);
+      let asaasPaymentId = extractAsaasPaymentId(response.data);
       let paymentUrl = extractAsaasPaymentUrl(response.data);
       const valorTotal = Number(session.price || 0) + Number(session.tax || 0);
+
+      if (!asaasPaymentId) {
+        asaasPaymentId = await getOrderAsaasPaymentId(orderId);
+      }
 
       if (asaasPaymentId) {
         try {
           await ensureOrderLinkedToAsaas(orderId, asaasPaymentId);
+          console.info('[ASAAS ORDER] Order linked to Asaas payment', { sessionId, orderId, asaasPaymentId });
         } catch (err: any) {
           console.error('[ASAAS LINK] Failed to link order to Asaas payment:', err.response?.data || err.message);
         }
+      } else {
+        console.warn('[ASAAS ORDER] Backend did not return or persist an Asaas payment id', { sessionId, orderId });
       }
 
       if (!paymentUrl && asaasPaymentId) {
         try {
           paymentUrl = await getAsaasPaymentLink(asaasPaymentId);
+          console.info('[ASAAS LINK] Payment link fetched from Asaas', { sessionId, orderId, asaasPaymentId });
         } catch (err: any) {
           console.error('[ASAAS LINK] Failed to fetch Asaas payment link:', err.response?.data || err.message);
         }
@@ -689,11 +734,16 @@ async function gerarLinkPagamento(sessionId: string, from: string, billingType: 
         else msg += '\n';
         msg += `Toque no link abaixo para pagar:\n${paymentUrl}`;
         
-        await sendWhatsAppMessage(from, msg);
+        const sent = await sendWhatsAppMessage(from, msg);
+        if (!sent) {
+          console.error('[ASAAS LINK] Failed to send payment link via WhatsApp', { sessionId, orderId, asaasPaymentId });
+        }
       } else {
+        console.error('[ASAAS LINK] Payment URL missing after backend/Asaas lookup', { sessionId, orderId, asaasPaymentId });
         await sendWhatsAppMessage(from, `Não foi possível gerar o link de pagamento. Digite 'Menu' para tentar novamente.`);
       }
     } else {
+      console.error('[ASAAS ORDER] Backend failed to create order', { sessionId, status: response.status, response: response.data });
       await sendWhatsAppMessage(from, `Não foi possível gerar a reserva no sistema. Digite 'Menu' para tentar novamente.`);
     }
   } catch (error) {
@@ -704,10 +754,57 @@ async function gerarLinkPagamento(sessionId: string, from: string, billingType: 
 
 async function consultarBilhete(reservaId: string | null, documento: string | null, from: string) {
   try {
-    // In a real scenario, this would query your API. We'll search local sessions first for demonstration.
-    // Replace with real backend API request: axios.get(`${API_BASE_URL}/orders/find`, { params: { ... } })
-    
-    let whereClause: any = { ticketPdfUrl: { not: null } };
+    console.info('[TICKET LOOKUP] Searching ticket', { reservaId, documento: documento ? '***' : null });
+
+    const orderWhere: any = {};
+    if (reservaId && /^\d+$/.test(reservaId)) {
+      orderWhere.id = BigInt(reservaId);
+    }
+    if (documento) {
+      orderWhere.order_customers = {
+        some: {
+          customers: {
+            document: documento
+          }
+        }
+      };
+    }
+
+    const orders = Object.keys(orderWhere).length > 0 ? await prisma.orders.findMany({
+      where: orderWhere,
+      include: {
+        order_customers: {
+          include: {
+            customers: true
+          }
+        }
+      },
+      orderBy: { created_at: 'desc' },
+      take: 5
+    }) : [];
+
+    if (orders.length > 0) {
+      if (orders.length === 1) {
+        const order = orders[0];
+        const passenger = order.order_customers[0]?.customers?.name || order.emergency_contact_name || order.username || 'Passageiro';
+        const seat = order.order_customers[0]?.seat_number || 'N/A';
+        const dataFormatada = order.date ? new Date(order.date.getTime() + order.date.getTimezoneOffset() * 60000).toLocaleDateString('pt-BR') : '';
+        const status = order.status === 'approved' ? 'Emitido' : 'Aguardando pagamento';
+        const msg = `Bilhete encontrado.\n\nReserva: ${order.id}\nPassageiro: ${passenger}\nRota: ${order.origin} → ${order.destination}\nData: ${dataFormatada}\nPoltrona: ${seat}\nStatus: ${status}\n\n${order.status === 'approved' ? 'Apresente este bilhete no momento do embarque.' : 'O bilhete será emitido após a confirmação do pagamento.'}`;
+        await sendWhatsAppMessage(from, msg);
+        return;
+      }
+
+      const listItems = orders.slice(0, 10).map((order: any) => ({
+        id: `reserva_${order.id.toString()}`,
+        title: `Reserva ${order.id.toString()}`.substring(0, 24),
+        description: `${order.origin || ''} → ${order.destination || ''}`.substring(0, 72)
+      }));
+      await sendInteractiveList(from, "Encontrei mais de uma reserva para este documento. Escolha qual deseja consultar:", "Ver reservas", listItems);
+      return;
+    }
+
+    let whereClause: any = {};
     if (reservaId) whereClause.orderId = reservaId;
     if (documento) whereClause.passengerCpf = documento;
 
