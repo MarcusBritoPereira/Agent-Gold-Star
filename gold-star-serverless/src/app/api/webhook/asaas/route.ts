@@ -51,6 +51,10 @@ function formatBrazilPhone(phoneNumber: string) {
   return phone;
 }
 
+function formatRouteHour(hour?: Date | null) {
+  return hour ? hour.toISOString().substring(11, 16) : '08:00';
+}
+
 export async function POST(req: Request) {
   try {
     const asaasToken = req.headers.get('asaas-access-token');
@@ -123,7 +127,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: true, duplicated: true, warnings: validationWarnings });
     }
 
-    const { orderCustomer } = await prisma.$transaction(async (tx) => {
+    const { orderCustomers } = await prisma.$transaction(async (tx: any) => {
       const updatedOrder = await tx.orders.update({
         where: { id: order.id },
         data: {
@@ -132,26 +136,30 @@ export async function POST(req: Request) {
         }
       });
 
-      const customer = await tx.order_customers.findFirst({
+      const customers = await tx.order_customers.findMany({
         where: { order_id: updatedOrder.id }
       });
 
-      if (customer) {
-        await tx.order_customers.update({
-          where: { id: customer.id },
+      if (customers.length > 0) {
+        await tx.order_customers.updateMany({
+          where: { order_id: updatedOrder.id },
           data: { status: 2 }
         });
 
         await tx.trip_seats.updateMany({
-          where: { order_customer_id: customer.id },
+          where: { order_customer_id: { in: customers.map((customer: any) => customer.id) } },
           data: { status: 2 }
         });
       }
 
-      return { orderCustomer: customer };
+      return { orderCustomers: customers };
     });
 
     if (order.emergency_contact_phone) {
+      const route = await prisma.routes.findUnique({
+        where: { id: order.route_id },
+        select: { hour: true }
+      });
       const phone = formatBrazilPhone(order.emergency_contact_phone);
       const confirmationSent = await sendWhatsAppMessage(phone, `Pagamento confirmado.\n\nSua passagem foi confirmada com sucesso.`);
       if (!confirmationSent) {
@@ -160,7 +168,8 @@ export async function POST(req: Request) {
 
       const dataFormatada = order.date ? new Date(order.date.getTime() + order.date.getTimezoneOffset() * 60000).toLocaleDateString('pt-BR') : '';
       const passageiro = order.emergency_contact_name || order.username || 'Passageiro';
-      const bilheteMsg = `Seu bilhete foi emitido.\n\nPassageiro: ${passageiro}\nRota: ${order.origin} → ${order.destination}\nData: ${dataFormatada}\nHorário: 08:00\nPoltrona: ${orderCustomer?.seat_number || 'N/A'}\n\nApresente o bilhete no momento do embarque.`;
+      const seatNumbers = orderCustomers.map((customer: any) => customer.seat_number).filter(Boolean).join(', ') || 'N/A';
+      const bilheteMsg = `Seu bilhete foi emitido.\n\nPassageiro: ${passageiro}\nRota: ${order.origin} → ${order.destination}\nData: ${dataFormatada}\nHorário: ${formatRouteHour(route?.hour)}\nPoltrona: ${seatNumbers}\n\nApresente o bilhete no momento do embarque.`;
       const ticketSent = await sendWhatsAppMessage(phone, bilheteMsg);
       if (!ticketSent) {
         console.error('[ASAAS WEBHOOK] Failed to send ticket WhatsApp message', { orderId: order.id.toString(), paymentId });
