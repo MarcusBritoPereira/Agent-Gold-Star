@@ -507,6 +507,14 @@ model Session {
   tax            Float?
   ticketPdfUrl   String?
   tripDate       String?
+  paymentMethod  String?
+  paymentLink    String?
+  origin         String?
+  destination    String?
+
+  orderId        String?
+  ticketPdfUrl   String?
+
   messages       Message[]
   user           User      @relation(fields: [userId], references: [id])
 }
