@@ -3,6 +3,47 @@ import { sendWhatsAppMessage, sendInteractiveButtons, sendInteractiveList } from
 import axios from 'axios';
 
 const API_BASE_URL = process.env.API_BASE_URL || 'https://lanchasgoldstar.com.br/api';
+const BUSINESS_TIME_ZONE = process.env.BUSINESS_TIME_ZONE || 'America/Belem';
+
+function getBusinessDateParts(date = new Date()) {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: BUSINESS_TIME_ZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    weekday: 'long'
+  }).formatToParts(date);
+
+  const value = (type: string) => parts.find((part) => part.type === type)?.value || '';
+
+  return {
+    year: Number(value('year')),
+    month: Number(value('month')),
+    day: Number(value('day')),
+    weekday: value('weekday')
+  };
+}
+
+function getBusinessTodayAtNoon() {
+  const { year, month, day } = getBusinessDateParts();
+  return new Date(Date.UTC(year, month - 1, day, 12, 0, 0));
+}
+
+function formatIsoDatePtBr(dateIso?: string | null) {
+  if (!dateIso) return '';
+  const [year, month, day] = dateIso.split('-');
+  if (!year || !month || !day) return dateIso;
+  return `${day}/${month}/${year}`;
+}
+
+function getAgeFromBirthDate(day: number, month: number, year: number) {
+  const today = getBusinessDateParts();
+  let age = today.year - year;
+  if (today.month < month || (today.month === month && today.day < day)) {
+    age -= 1;
+  }
+  return age;
+}
 
 function getAsaasConfig() {
   const apiKey = process.env.ASAAS_API_KEY;
@@ -68,17 +109,34 @@ function validateName(name: string) {
 function validateCpf(cpf: string) {
   const digits = cpf.replace(/\D/g, '');
   if (digits.length !== 11) return false;
-  return true;
+  if (/^(\d)\1{10}$/.test(digits)) return false;
+
+  const calculateDigit = (factor: number) => {
+    let total = 0;
+    for (let i = 0; i < factor - 1; i++) {
+      total += Number(digits[i]) * (factor - i);
+    }
+    const remainder = (total * 10) % 11;
+    return remainder === 10 ? 0 : remainder;
+  };
+
+  return calculateDigit(10) === Number(digits[9]) && calculateDigit(11) === Number(digits[10]);
 }
 
 function validateDate(dateStr: string) {
   const regex = /^(\d{2})\/(\d{2})\/(\d{4})$/;
   if (!regex.test(dateStr)) return false;
-  const [, day, month, year] = dateStr.match(regex)!;
-  const date = new Date(`${year}-${month}-${day}T12:00:00Z`);
+  const [, dayStr, monthStr, yearStr] = dateStr.match(regex)!;
+  const day = Number(dayStr);
+  const month = Number(monthStr);
+  const year = Number(yearStr);
+  const date = new Date(Date.UTC(year, month - 1, day, 12, 0, 0));
   if (isNaN(date.getTime())) return false;
-  if (date > new Date()) return false;
-  return true;
+  if (date.getUTCFullYear() !== year || date.getUTCMonth() !== month - 1 || date.getUTCDate() !== day) return false;
+  if (date > getBusinessTodayAtNoon()) return false;
+
+  const age = getAgeFromBirthDate(day, month, year);
+  return age >= 0 && age <= 120;
 }
 
 async function getOrCreateSession(from: string) {
@@ -203,6 +261,10 @@ async function handleInteractiveAction(session: any, from: string, interactiveId
   if (interactiveId.startsWith('origem_')) {
     const origin = interactiveId.replace('origem_', '');
     if (origin === 'outra') {
+      await prisma.session.update({
+        where: { id: session.id },
+        data: { state: 'escolhendo_origem', origin: null, destination: null }
+      });
       await sendWhatsAppMessage(from, "Por favor, digite a cidade de origem:");
       return;
     }
@@ -240,6 +302,10 @@ async function handleInteractiveAction(session: any, from: string, interactiveId
   if (interactiveId.startsWith('destino_')) {
     const dest = interactiveId.replace('destino_', '');
     if (dest === 'outro') {
+      await prisma.session.update({
+        where: { id: session.id },
+        data: { state: 'escolhendo_destino', destination: null }
+      });
       await sendWhatsAppMessage(from, "Por favor, digite a cidade de destino:");
       return;
     }
@@ -312,7 +378,7 @@ async function handleInteractiveAction(session: any, from: string, interactiveId
   // Confirmar poltrona unica ou outra data
   if (interactiveId.startsWith('confirmar_poltrona_')) {
     const seatId = interactiveId.replace('confirmar_poltrona_', '');
-    await avancarParaDadosPassageiro(session.id, from, seatId);
+    await tentarAvancarComPoltrona(session, from, seatId);
     return;
   }
   
@@ -324,7 +390,7 @@ async function handleInteractiveAction(session: any, from: string, interactiveId
   // 6. Pedir nome completo
   if (interactiveId.startsWith('seat_')) {
     const seatId = interactiveId.replace('seat_', '');
-    await avancarParaDadosPassageiro(session.id, from, seatId);
+    await tentarAvancarComPoltrona(session, from, seatId);
     return;
   }
 
@@ -436,7 +502,7 @@ async function processTextByState(session: any, from: string, text: string) {
   }
 
   if (state === 'escolhendo_poltrona') {
-    await avancarParaDadosPassageiro(session.id, from, text.trim());
+    await tentarAvancarComPoltrona(session, from, text.trim());
     return;
   }
 
@@ -537,8 +603,7 @@ async function buscarViagensDisponiveis(sessionId: string, origin: string, dest:
       const targetDay = diasSemana[r.week_day];
       
       let count = 0;
-      let d = new Date();
-      d.setUTCHours(12, 0, 0, 0);
+      let d = getBusinessTodayAtNoon();
       
       while (d.getUTCDay() !== targetDay) {
         d.setUTCDate(d.getUTCDate() + 1);
@@ -574,6 +639,8 @@ async function buscarViagensDisponiveis(sessionId: string, origin: string, dest:
 
     let viagensDisponiveis: any[] = [];
     
+    let availabilityErrors = 0;
+
     await Promise.all(viagensGeradas.map(async (viagem) => {
       try {
         const response = await axios.get(`${API_BASE_URL}/routes/available_seats`, {
@@ -582,11 +649,23 @@ async function buscarViagensDisponiveis(sessionId: string, origin: string, dest:
         if (response.data.status !== 'error' && response.data.available_seat_numbers && response.data.available_seat_numbers.length > 0) {
           viagensDisponiveis.push(viagem);
         }
-      } catch (err) {
+      } catch (err: any) {
+        availabilityErrors++;
+        console.error('[TRIPS] Failed to check seat availability', {
+          sessionId,
+          routeId: viagem.route_id,
+          date: viagem.dataIso,
+          error: err.response?.data || err.message
+        });
       }
     }));
 
     viagensDisponiveis.sort((a, b) => new Date(a.dataIso).getTime() - new Date(b.dataIso).getTime());
+
+    if (viagensDisponiveis.length === 0 && availabilityErrors === viagensGeradas.length) {
+      await sendWhatsAppMessage(from, `Não consegui consultar a disponibilidade das viagens agora.\n\nDigite 'Menu' para tentar novamente em alguns instantes.`);
+      return;
+    }
 
     if (viagensDisponiveis.length === 0) {
       await sendWhatsAppMessage(from, `Não encontrei viagens disponíveis para ${origin} → ${dest} nos próximos dias.\n\nDigite 'Menu' para recomeçar.`);
@@ -608,6 +687,61 @@ async function buscarViagensDisponiveis(sessionId: string, origin: string, dest:
   }
 }
 
+type SeatValidationResult =
+  | { valid: true; seatId: string }
+  | { valid: false; message: string };
+
+async function validarPoltronaDisponivel(session: any, seatId: string): Promise<SeatValidationResult> {
+  if (!session.routeId || !session.tripDate) {
+    return { valid: false, message: "Não consegui identificar a viagem selecionada. Digite 'Menu' para recomeçar." };
+  }
+
+  const seatNumber = Number(seatId);
+  if (!Number.isInteger(seatNumber) || seatNumber <= 0) {
+    return { valid: false, message: "Informe apenas o número da poltrona desejada. Exemplo: 12." };
+  }
+
+  const response = await axios.get(`${API_BASE_URL}/routes/available_seats`, {
+    params: { route_id: session.routeId, date: session.tripDate, web: 'true' }
+  });
+
+  const availableSeats = response.data.available_seat_numbers || [];
+  const isAvailable = availableSeats.map(String).includes(String(seatNumber));
+
+  if (!isAvailable) {
+    const visibleSeats = availableSeats.slice(0, 20).join(', ');
+    return {
+      valid: false,
+      message: visibleSeats
+        ? `Essa poltrona não está disponível. Escolha uma das poltronas livres: ${visibleSeats}.`
+        : "Não há poltronas disponíveis para esta viagem. Digite 'Menu' para recomeçar."
+    };
+  }
+
+  return { valid: true, seatId: String(seatNumber) };
+}
+
+async function tentarAvancarComPoltrona(session: any, from: string, seatId: string) {
+  try {
+    const validation = await validarPoltronaDisponivel(session, seatId);
+    if (!validation.valid) {
+      await sendWhatsAppMessage(from, validation.message);
+      return;
+    }
+
+    await avancarParaDadosPassageiro(session.id, from, validation.seatId || seatId);
+  } catch (err: any) {
+    console.error('[SEATS] Failed to validate selected seat', {
+      sessionId: session.id,
+      routeId: session.routeId,
+      tripDate: session.tripDate,
+      seatId,
+      error: err.response?.data || err.message
+    });
+    await sendWhatsAppMessage(from, "Não consegui confirmar a disponibilidade dessa poltrona agora. Digite 'Menu' para tentar novamente.");
+  }
+}
+
 async function avancarParaDadosPassageiro(sessionId: string, from: string, seatId: string) {
   await prisma.session.update({
     where: { id: sessionId },
@@ -626,7 +760,7 @@ async function exibirResumo(session: any, from: string) {
     `CPF: ${session.passengerCpf}\n` +
     `Nascimento: ${session.passengerDob}\n\n` +
     `Rota: ${session.origin} → ${session.destination}\n` +
-    `Data: ${session.tripDate}\n` +
+    `Data: ${formatIsoDatePtBr(session.tripDate)}\n` +
     `Horário: ${session.hora || '08:00'}\n` +
     `Poltrona: ${session.seat}\n\n` +
     `Passagem: R$ ${price}\n` +
