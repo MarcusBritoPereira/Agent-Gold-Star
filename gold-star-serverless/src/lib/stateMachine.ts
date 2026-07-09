@@ -352,7 +352,7 @@ async function handleInteractiveAction(session: any, from: string, interactiveId
   if (interactiveId === 'gerar_pagamento') {
     await sendInteractiveButtons(from, "Como você prefere realizar o pagamento?", [
       { id: 'pagamento_pix', title: 'PIX' },
-      { id: 'pagamento_credito', title: 'Cartão de Crédito' }
+      { id: 'pagamento_credito', title: 'Cartão' }
     ]);
     return;
   }
