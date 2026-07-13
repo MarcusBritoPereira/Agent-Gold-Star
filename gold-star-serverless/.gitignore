@@ -40,3 +40,12 @@ yarn-error.log*
 next-env.d.ts
 
 /src/generated/prisma
+
+# local test scripts and one-off files
+test_*.js
+test_*.ts
+test-*.js
+test-*.ts
+patch.js
+query_*.js
+seats.json

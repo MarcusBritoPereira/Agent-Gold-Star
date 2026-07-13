@@ -11,3 +11,6 @@ caddy_config/
 /tmp/
 .env.*
 !.env.example
+
+# Gemeni Agents config
+.agents/
